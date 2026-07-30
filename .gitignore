@@ -1,5 +1,6 @@
-# Downloaded audio - never commit these
+# Downloaded and split audio - never commit these
 downloads/
+tracks/
 *.mp3
 *.m4a
 *.opus
