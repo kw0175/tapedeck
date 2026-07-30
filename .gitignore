@@ -1,0 +1,24 @@
+# Downloaded audio - never commit these
+downloads/
+*.mp3
+*.m4a
+*.opus
+*.flac
+*.wav
+*.webm
+*.part
+*.ytdl
+*.jpg
+*.png
+
+# Download archives / URL lists are local state
+*.archive
+done.txt
+urls.txt
+cookies.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
