@@ -265,8 +265,15 @@ def do_detect(args, ffmpeg, ffprobe):
         env = loudness_envelope(args.input, ffmpeg)
         if not env:
             sys.exit("Could not read a loudness envelope from this file.")
-        cuts = envelope_boundaries(env, (args.expect - 1) if args.expect else 11,
-                                   args.min_spacing, args.edge_guard)
+        if args.expect:
+            want = args.expect - 1
+        else:
+            # Guessing a fixed count is worse than useless - it silently produces
+            # merged or chopped tracks. Estimate from duration and say so loudly.
+            want = max(1, int(total // 270) - 1)
+            print(f"!! No --expect given. Estimating {want + 1} tracks from duration "
+                  f"(~4.5min/song). Pass --expect N for an accurate split.")
+        cuts = envelope_boundaries(env, want, args.min_spacing, args.edge_guard)
         print(f"Scanned {len(env)}s, selected {len(cuts)} boundary point(s).")
         starts = [0.0] + cuts
         rows = [(t, None, names[i] if i < len(names) else f"Track {i + 1:02d}")

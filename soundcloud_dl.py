@@ -15,6 +15,7 @@ Examples:
 """
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -30,8 +31,22 @@ PLAYLIST_TEMPLATE = "%(playlist)s/%(playlist_index)02d - %(uploader)s - %(title)
 
 
 def find_ffmpeg():
-    """Return path to ffmpeg, or None. yt-dlp needs it for anything but --format best."""
-    return shutil.which("ffmpeg")
+    """Locate ffmpeg on PATH, falling back to the WinGet install location.
+
+    winget adds ffmpeg to PATH, but shells opened before the install don't see it
+    until they're restarted. Without this, yt-dlp silently skips remuxing and
+    warns about DASH containers and malformed AAC timestamps.
+    """
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        hits = sorted(Path(local).glob(
+            "Microsoft/WinGet/Packages/Gyan.FFmpeg*/**/bin/ffmpeg.exe"))
+        if hits:
+            return str(hits[-1])
+    return None
 
 
 def read_batch(path):
@@ -111,6 +126,11 @@ def build_opts(args, progress):
         "concurrent_fragment_downloads": 4,
         "postprocessors": [],
     }
+
+    # Hand yt-dlp the resolved path so it can remux even when ffmpeg isn't on PATH.
+    ffmpeg = find_ffmpeg()
+    if ffmpeg:
+        opts["ffmpeg_location"] = str(Path(ffmpeg).parent)
 
     if args.archive:
         # yt-dlp records each track id here and silently skips it next run.
