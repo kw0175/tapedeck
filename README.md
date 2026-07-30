@@ -143,6 +143,55 @@ re-encode**. Two ways to avoid a second generation of lossy compression:
 The default (`--fade 24` into the source format at 256kbps) is a middle ground:
 audibly transparent from a 128–160kbps SoundCloud source, and small.
 
+## Album artwork
+
+```powershell
+python add_art.py cover.jpg -d "Artist - Album"
+python add_art.py --from-track https://soundcloud.com/user/track -d "Artist - Album"
+```
+
+`--from-track` pulls the artwork straight off the SoundCloud page. Non-square images
+are centre-cropped to the largest square they contain, then scaled to `--size`
+(default 500). Audio is stream-copied, so embedding costs nothing in quality. A
+folder-level `cover.jpg` is written too, since many players prefer that over tags.
+
+## Converting formats
+
+```powershell
+python convert_folder.py -d "Artist - Album" --format alac
+python convert_folder.py -d "Artist - Album" --format mp3 -q 320 -o "somewhere else"
+```
+
+| Target | Type | Notes |
+|---|---|---|
+| `alac` | lossless | Apple Lossless in `.m4a` |
+| `flac` | lossless | |
+| `wav` | lossless | uncompressed; no tag support |
+| `m4a` | lossy | AAC |
+| `mp3` | lossy | most universally supported |
+
+Tags and embedded art carry across. The script reports whether a conversion
+preserves audio exactly, and warns on lossy → lossy, which stacks artefacts.
+
+### Getting a bootleg into Apple Music on Windows
+
+Verified the hard way, on Apple Music for Windows 1.1540:
+
+- **FLAC does not work.** Apple has never supported it in iTunes or Apple Music.
+- **ALAC did not work either**, despite being Apple's own lossless codec. The app
+  silently refused ffmpeg-written `.m4a` files — no error, no import.
+- **MP3 works.** `--format mp3 -q 320` is the reliable route.
+
+The app's local-file import is buggy in general: many users report `Import`
+missing from the sidebar's `⋯` menu and drag-and-drop failing without any error.
+If it fights you, MusicBee or foobar2000 read the original FLAC folders directly,
+artwork and tags included, with no conversion at all.
+
+**On quality:** SoundCloud serves 96–160kbps, so that is the ceiling regardless of
+what you convert to. MP3 320 gives the encoder far more headroom than the source
+ever used, making the loss effectively inaudible. Keep FLAC as the archival copy
+and use MP3 for playback.
+
 ## Notes
 
 - **`--format best` vs `mp3`:** SoundCloud serves most streams as ~128kbps
