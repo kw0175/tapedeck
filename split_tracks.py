@@ -315,9 +315,23 @@ def do_split(args, ffmpeg, ffprobe):
     outdir.mkdir(parents=True, exist_ok=True)
 
     ext = Path(args.input).suffix.lstrip(".") if args.format == "copy" else args.format
+    fade = max(0.0, args.fade / 1000.0)
+    # A fade needs a filter, and filters need decoded audio - so any fade forces a
+    # re-encode. Joined uploads often have a click exactly at each join, and cuts
+    # land right on it; a few ms of fade removes that without audible loss.
+    reencode = args.format != "copy" or fade > 0
+
     print(f"Input  : {Path(args.input).name}")
     print(f"Output : {outdir}")
-    print(f"Mode   : {'stream copy (lossless, fast)' if args.format == 'copy' else f're-encode to {ext}'}")
+    if not reencode:
+        print("Mode   : stream copy (lossless, fast)")
+    else:
+        why = f" [forced by --fade {args.fade}ms]" if args.format == "copy" else ""
+        print(f"Mode   : re-encode to {ext}{why}")
+        if ext == "flac":
+            print("         flac is lossless, so this adds no quality loss")
+    if fade > 0:
+        print(f"Fade   : {args.fade}ms in/out (removes clicks at cut points)")
     print(f"Tracks : {len(tracks)}\n")
 
     failed = 0
@@ -331,12 +345,23 @@ def do_split(args, ffmpeg, ffprobe):
             continue
 
         dest = outdir / f"{i + 1:02d} - {title.translate(ILLEGAL).strip()}.{ext}"
-        # -ss/-t before -i = fast seek; audio frames are small enough that this
-        # stays accurate to well under a second.
+        # -ss/-t before -i. When re-encoding this is still sample-accurate
+        # (-accurate_seek is on by default, so ffmpeg decodes from an earlier
+        # keyframe and discards), AND it rebases output timestamps to zero -
+        # which the fade filter below depends on. With -ss as an OUTPUT option
+        # the filter still sees source timestamps, so afade=t=out fires before
+        # the segment starts and silences the whole track.
         cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
                "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(args.input)]
-        cmd += ["-c", "copy"] if args.format == "copy" else \
-               ["-b:a", f"{args.bitrate}k"] if ext in ("mp3", "m4a", "opus") else []
+        if reencode:
+            if fade > 0:
+                out_at = max(0.0, dur - fade)
+                cmd += ["-af", f"afade=t=in:st=0:d={fade:.3f},"
+                               f"afade=t=out:st={out_at:.3f}:d={fade:.3f}"]
+            if ext in ("mp3", "m4a", "opus"):
+                cmd += ["-b:a", f"{args.bitrate}k"]
+        else:
+            cmd += ["-c", "copy"]
         cmd += ["-metadata", f"title={title}", "-metadata", f"track={i + 1}/{len(tracks)}"]
         for tag, key in (("artist", "ARTIST"), ("album", "ALBUM"), ("date", "DATE")):
             if meta.get(key):
@@ -400,6 +425,11 @@ def main():
                    choices=["copy", "mp3", "m4a", "flac", "wav", "opus"],
                    help="'copy' cuts losslessly without re-encoding (default)")
     p.add_argument("-q", "--bitrate", type=int, default=256, help="kbps when re-encoding")
+    p.add_argument("--fade", type=float, default=24, metavar="MS",
+                   help="fade in/out at each cut, in milliseconds (default: 24). "
+                        "Removes the click you get when a cut lands on a join in a "
+                        "concatenated upload. Forces a re-encode - use --fade 0 to "
+                        "keep a true lossless stream copy.")
     p.add_argument("--album"), p.add_argument("--artist"), p.add_argument("--date")
     p.add_argument("--dry-run", action="store_true", help="show the cuts, write nothing")
     args = p.parse_args()
