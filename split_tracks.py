@@ -351,7 +351,10 @@ def do_split(args, ffmpeg, ffprobe):
             failed += 1
             continue
 
-        dest = outdir / f"{i + 1:02d} - {title.translate(ILLEGAL).strip()}.{ext}"
+        # Trailing '_' from a stripped '?' (e.g. "...What I Mean?") looks like a
+        # typo, and Windows rejects trailing dots/spaces outright.
+        safe = title.translate(ILLEGAL).strip().rstrip(" ._") or f"Track {i + 1:02d}"
+        dest = outdir / f"{i + 1:02d} - {safe}.{ext}"
         # -ss/-t before -i. When re-encoding this is still sample-accurate
         # (-accurate_seek is on by default, so ffmpeg decodes from an earlier
         # keyframe and discards), AND it rebases output timestamps to zero -
