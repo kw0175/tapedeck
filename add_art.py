@@ -71,13 +71,40 @@ def dimensions(path, ffprobe):
         return None
 
 
-def make_square(src, dest, size, ffmpeg):
-    """Centre-crop to a square, then scale. Safe on already-square input."""
+def content_crop(src, ffmpeg):
+    """Find the real picture bounds, ignoring letterbox bars.
+
+    YouTube serves thumbnails as 16:9 content padded into a 4:3 frame, so a plain
+    centre crop keeps the black bars and bakes them into the cover. cropdetect
+    needs several frames even on a still, hence -loop.
+    """
+    proc = subprocess.run(
+        [ffmpeg, "-hide_banner", "-loop", "1", "-i", str(src),
+         "-vf", "cropdetect=24:2:0", "-frames:v", "4", "-f", "null", "-"],
+        capture_output=True, text=True)
+    found = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", proc.stderr)
+    if not found:
+        return None
+    w, h, x, y = (int(v) for v in found[-1])
+    return (w, h, x, y) if w > 8 and h > 8 else None
+
+
+def make_square(src, dest, size, ffmpeg, trim=True):
+    """Strip letterboxing, centre-crop to a square, then scale."""
+    filters, trimmed = [], None
+    if trim:
+        c = content_crop(src, ffmpeg)
+        if c:
+            w, h, x, y = c
+            if x or y:                              # only report an actual trim
+                trimmed = (w, h, x, y)
+            filters.append(f"crop={w}:{h}:{x}:{y}")
+    filters.append("crop='min(iw,ih)':'min(iw,ih)'")
+    filters.append(f"scale={size}:{size}:flags=lanczos")
     subprocess.run(
         [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
-         "-vf", f"crop='min(iw,ih)':'min(iw,ih)',scale={size}:{size}:flags=lanczos",
-         "-q:v", "2", str(dest)], check=True)
-    return dest
+         "-vf", ",".join(filters), "-q:v", "2", str(dest)], check=True)
+    return dest, trimmed
 
 
 def embed(audio, art, ffmpeg):
@@ -115,6 +142,8 @@ def main():
     p.add_argument("-d", "--dir", required=True, help="folder of audio files")
     p.add_argument("--size", type=int, default=500,
                    help="output cover size in pixels, square (default: 500)")
+    p.add_argument("--no-trim", action="store_true",
+                   help="keep letterbox bars instead of cropping them off")
     p.add_argument("--no-cover-file", action="store_true",
                    help="skip writing cover.jpg alongside the tracks")
     p.add_argument("--dry-run", action="store_true", help="show what would change")
@@ -147,7 +176,12 @@ def main():
             print(f"             not square - centre-cropping to "
                   f"{min(dim)}x{min(dim)} before scaling")
 
-        art = make_square(raw, Path(td) / "cover.jpg", args.size, ffmpeg)
+        art, trimmed = make_square(raw, Path(td) / "cover.jpg", args.size, ffmpeg,
+                                   trim=not args.no_trim)
+        if trimmed:
+            w, h, x, y = trimmed
+            print(f"             letterboxing detected - trimmed to {w}x{h} "
+                  f"(dropped {x}px sides, {y}px top/bottom)")
         print(f"Cover      : {args.size}x{args.size}  "
               f"({art.stat().st_size / 1024:.0f} KB)")
         print(f"Folder     : {folder}")
