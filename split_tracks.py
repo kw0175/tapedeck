@@ -31,6 +31,7 @@ Cuesheet format (blank lines and #-comments ignored):
 """
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -116,6 +117,28 @@ def segments_from_gaps(silences, total, min_track):
     if cursor < total:
         segs.append((cursor, total))
     return [(a, b) for a, b in segs if (b - a) >= min_track]
+
+
+def chapters_of(url):
+    """Read a video's chapter list -> [(start, end, title), ...].
+
+    When an uploader has marked chapters (or written timestamps YouTube parsed
+    into them), those boundaries are exact. Always prefer them over anything
+    detected from the audio.
+    """
+    proc = subprocess.run(
+        [sys.executable, "-m", "yt_dlp", "--simulate", "--print", "%(chapters)j", url],
+        capture_output=True, text=True)
+    for line in reversed(proc.stdout.strip().splitlines()):
+        line = line.strip()
+        if line.startswith("["):
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            return [(float(c["start_time"]), float(c["end_time"]),
+                     str(c.get("title") or "").strip()) for c in data]
+    return []
 
 
 def loudness_envelope(path, ffmpeg):
@@ -234,7 +257,19 @@ def do_detect(args, ffmpeg, ffprobe):
     method = args.method
     rows, explicit_ends = [], False
 
-    if method in ("auto", "gaps"):
+    if args.from_chapters:
+        chaps = chapters_of(args.from_chapters)
+        if not chaps:
+            sys.exit(f"No chapters found on {args.from_chapters}.\n"
+                     "Drop --from-chapters to detect boundaries from the audio instead.")
+        # Chapter titles win over --names; they came from the same source as the
+        # timings. --names only fills gaps where a chapter had no title.
+        rows = [(s, e, t or (names[i] if i < len(names) else f"Track {i + 1:02d}"))
+                for i, (s, e, t) in enumerate(chaps)]
+        explicit_ends = True
+        method = "chapters"
+
+    elif method in ("auto", "gaps"):
         sil = detect_silences(args.input, ffmpeg, args.gap_noise, args.gap_min)
         segs = segments_from_gaps(sil, total, args.min_track)
         enough = len(segs) >= (args.expect or 2)
@@ -407,6 +442,10 @@ def main():
                    help="where --detect writes its cuesheet (default: cuesheet.txt)")
     p.add_argument("--names", help="text file of track titles, one per line, in order")
     p.add_argument("--expect", type=int, metavar="N", help="how many tracks to expect")
+    p.add_argument("--from-chapters", metavar="URL",
+                   help="build the cuesheet from a video's chapter markers instead "
+                        "of detecting boundaries. Exact when available - always "
+                        "prefer this. Titles come from the chapters themselves.")
     p.add_argument("--method", default="auto",
                    choices=["auto", "gaps", "envelope", "silence"],
                    help="'auto' tries gaps then falls back to envelope (default)")

@@ -88,6 +88,19 @@ python split_tracks.py concert.m4a --cue cue.txt -o tracks
 
 `--names` takes a plain text file of song titles, one per line, in playing order.
 
+### Use chapters when they exist
+
+If the upload has chapter markers — or timestamps in the description that YouTube
+parsed into chapters — those boundaries are exact. Always prefer them:
+
+```powershell
+python split_tracks.py concert.webm --detect --from-chapters "https://youtu.be/VIDEOID" `
+    --artist "Oasis" --album "MTV Unplugged 1996" --date 1996 --cue-out cue.txt
+```
+
+Titles come from the chapters too, so no `--names` file is needed. Everything below
+is only for recordings with no chapters.
+
 ### Detection methods
 
 `--method auto` (the default) tries these in order:
