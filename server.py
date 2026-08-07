@@ -28,6 +28,7 @@ import time
 import uuid
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
 
 HERE = Path(__file__).resolve().parent
 JOBS = {}
@@ -65,6 +66,63 @@ def safe_target(folder):
     if root not in target.parents and target != root:
         raise ValueError(f"Destination must be inside {root}")
     return target
+
+
+def list_dirs(rel):
+    """Directory listing under --root, for the in-page folder browser.
+
+    Everything is expressed relative to root so the browser can't be walked out
+    of it, and so the same paths work whether you're at the PC or remote.
+    """
+    root = Path(CONFIG["root"]).resolve()
+    target = safe_target(rel) if (rel or "").strip() else root
+    if not target.is_dir():
+        raise ValueError(f"Not a folder: {target}")
+    dirs = sorted((d.name for d in target.iterdir()
+                   if d.is_dir() and not d.name.startswith(".")), key=str.lower)
+    rel_here = "" if target == root else target.relative_to(root).as_posix()
+    parent = (None if target == root
+              else ("" if target.parent == root
+                    else target.parent.relative_to(root).as_posix()))
+    return {"path": rel_here, "parent": parent, "dirs": dirs,
+            "absolute": str(target), "root": str(root)}
+
+
+def native_pick(initial):
+    """Open a real Explorer folder dialog on the machine running this server.
+
+    Only useful when you're sitting at that machine - called remotely, the dialog
+    would appear on the host with nobody there to answer it, so the UI only offers
+    this for local requests. Runs off-thread with a timeout so a dialog nobody
+    closes can't wedge the server.
+    """
+    try:
+        import tkinter
+        from tkinter import filedialog
+    except Exception as e:                                       # noqa: BLE001
+        return None, f"No GUI toolkit available: {e}"
+
+    out = {}
+
+    def show():
+        try:
+            r = tkinter.Tk()
+            r.withdraw()
+            r.attributes("-topmost", True)
+            out["path"] = filedialog.askdirectory(
+                initialdir=initial, title="Choose destination folder", mustexist=False)
+            r.destroy()
+        except Exception as e:                                   # noqa: BLE001
+            out["error"] = str(e)
+
+    t = threading.Thread(target=show, daemon=True)
+    t.start()
+    t.join(timeout=180)
+    if t.is_alive():
+        return None, "Dialog timed out - it may still be open on the PC"
+    if out.get("error"):
+        return None, out["error"]
+    return (out.get("path") or ""), None
 
 
 def log(job, line):
@@ -236,6 +294,20 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def _is_local(self):
+        """True only if the browser is on this machine.
+
+        The peer address is not enough: cloudflared runs here and connects over
+        loopback, so a request tunnelled from anywhere in the world arrives from
+        127.0.0.1. Cloudflare stamps these headers on the way through, so their
+        presence means the request came from outside.
+        """
+        if self.client_address[0] not in ("127.0.0.1", "::1"):
+            return False
+        return not any(self.headers.get(h) for h in
+                       ("CF-Connecting-IP", "CF-Ray", "X-Forwarded-For",
+                        "X-Forwarded-Host", "X-Real-IP"))
+
     def _authed(self):
         token = CONFIG.get("token")
         if not token:
@@ -259,7 +331,19 @@ class Handler(BaseHTTPRequestHandler):
                 "root": CONFIG["root"],
                 "needsToken": bool(CONFIG.get("token")),
                 "formats": ["mp3", "m4a", "flac"],
+                # A native dialog opens on the machine running this server, so it
+                # is only offered when the browser is on that same machine.
+                "canNativePick": self._is_local(),
             }))
+
+        if path == "/api/browse":
+            if not self._authed():
+                return
+            rel = (parse_qs(urlparse(self.path).query).get("path") or [""])[0]
+            try:
+                return self._send(200, json.dumps(list_dirs(rel)))
+            except ValueError as e:
+                return self._send(400, json.dumps({"error": str(e)}))
 
         if path.startswith("/api/jobs"):
             if not self._authed():
@@ -278,10 +362,46 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, json.dumps({"error": "not found"}))
 
     def do_POST(self):
-        if self.path.split("?")[0] != "/api/jobs":
+        path = self.path.split("?")[0]
+        if path not in ("/api/jobs", "/api/mkdir", "/api/pick"):
             return self._send(404, json.dumps({"error": "not found"}))
         if not self._authed():
             return
+
+        if path == "/api/mkdir":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                b = json.loads(self.rfile.read(n) or b"{}")
+                name = re.sub(r'[<>:"/\\|?*]', "_", (b.get("name") or "").strip())
+                if not name:
+                    raise ValueError("Give the folder a name")
+                target = safe_target(f"{(b.get('path') or '').strip()}/{name}".strip("/"))
+                target.mkdir(parents=True, exist_ok=True)
+                root = Path(CONFIG["root"]).resolve()
+                return self._send(200, json.dumps(
+                    {"path": target.relative_to(root).as_posix()}))
+            except (ValueError, json.JSONDecodeError) as e:
+                return self._send(400, json.dumps({"error": str(e)}))
+            except OSError as e:
+                return self._send(400, json.dumps({"error": f"Could not create: {e}"}))
+
+        if path == "/api/pick":
+            if not self._is_local():
+                return self._send(400, json.dumps({
+                    "error": "A system dialog only works when you're at the PC. "
+                             "Use Browse instead."}))
+            chosen, err = native_pick(CONFIG["root"])
+            if err:
+                return self._send(500, json.dumps({"error": err}))
+            if not chosen:
+                return self._send(200, json.dumps({"cancelled": True}))
+            try:
+                target = safe_target(chosen)
+            except ValueError as e:
+                return self._send(400, json.dumps({"error": str(e)}))
+            root = Path(CONFIG["root"]).resolve()
+            rel = "" if target == root else target.relative_to(root).as_posix()
+            return self._send(200, json.dumps({"path": rel, "absolute": str(target)}))
         try:
             n = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(n) or b"{}")

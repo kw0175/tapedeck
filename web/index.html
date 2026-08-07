@@ -98,6 +98,38 @@
   .msg.ok{background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.3);
           color:#a5f0cd}
 
+  button.ghost{background:#0d1730;border:1px solid var(--line);color:var(--ink);
+               box-shadow:none;font-weight:500}
+  button.ghost:hover:not(:disabled){border-color:var(--accent);
+    box-shadow:0 4px 14px rgba(91,140,255,.18)}
+  input[readonly]{cursor:default;color:#cfdcf5}
+
+  /* ---- folder browser ---- */
+  .back{position:fixed;inset:0;background:rgba(5,9,18,.62);backdrop-filter:blur(7px);
+        display:none;align-items:center;justify-content:center;padding:22px;z-index:50}
+  .back.on{display:flex;animation:fade .22s ease both}
+  .modal{width:min(560px,100%);max-height:80vh;display:flex;flex-direction:column;
+    background:linear-gradient(180deg,var(--card),var(--card2));
+    border:1px solid var(--line);border-radius:16px;overflow:hidden;
+    box-shadow:0 26px 70px rgba(0,0,0,.55);
+    animation:pop .3s cubic-bezier(.2,.9,.25,1.05) both}
+  .mhead{padding:16px 18px;border-bottom:1px solid var(--line)}
+  .mhead h2{margin:0;font-size:16px;font-weight:650}
+  .crumb{margin-top:7px;font-size:12px;color:var(--dim);word-break:break-all;
+         font-family:Consolas,monospace}
+  .mlist{overflow:auto;padding:8px;flex:1;min-height:130px}
+  .item{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;
+        cursor:pointer;font-size:14px;transition:background .14s,transform .14s;
+        animation:rise .3s cubic-bezier(.2,.8,.2,1) both}
+  .item:hover{background:#1b2a4d;transform:translateX(2px)}
+  .item .ico{opacity:.75}
+  .empty{padding:22px;text-align:center;color:var(--dim);font-size:13px}
+  .mfoot{padding:13px 18px;border-top:1px solid var(--line);display:flex;gap:9px;
+         align-items:center;flex-wrap:wrap}
+  .mfoot input{flex:1;min-width:150px;padding:9px 11px}
+  @keyframes pop{from{opacity:0;transform:translateY(14px) scale(.975)}
+                 to{opacity:1;transform:none}}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
   @keyframes rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -121,9 +153,11 @@
 
     <div style="margin-top:14px">
       <label for="folder">Destination folder</label>
-      <input id="folder" type="text" placeholder="Oasis - MTV Unplugged 1996">
-      <div class="hint">Created if it doesn't exist. Relative to <code id="root">…</code>,
-        or give a full path inside it.</div>
+      <div class="row">
+        <div><input id="folder" type="text" readonly placeholder="Click Browse to choose…"></div>
+        <button id="browse" type="button" class="ghost">Browse…</button>
+      </div>
+      <div class="hint">Inside <code id="root">…</code>. Created if it doesn't exist.</div>
     </div>
 
     <div class="opts" style="margin-top:14px">
@@ -167,6 +201,24 @@
     <div id="formErr" class="msg err" style="display:none"></div>
   </div>
 
+  <div class="back" id="back">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mtitle">
+      <div class="mhead">
+        <h2 id="mtitle">Choose a folder</h2>
+        <div class="crumb" id="crumb">…</div>
+      </div>
+      <div class="mlist" id="mlist"></div>
+      <div class="mfoot">
+        <input id="newname" type="text" placeholder="New folder name…">
+        <button id="mkdir" type="button" class="ghost">Create</button>
+        <span style="flex:1"></span>
+        <button id="native" type="button" class="ghost" style="display:none">Explorer…</button>
+        <button id="cancel" type="button" class="ghost">Cancel</button>
+        <button id="choose" type="button">Use this folder</button>
+      </div>
+    </div>
+  </div>
+
   <div class="card" id="panel">
     <div class="phase"><b id="phase">Starting</b><span id="pct">0%</span></div>
     <div class="bar" id="bar"><i></i></div>
@@ -189,16 +241,131 @@ function headers(){
   return h;
 }
 
+let ROOT = '';
 fetch('/api/config').then(r=>r.json()).then(c=>{
+  ROOT = c.root;
   $('root').textContent = c.root;
+  // A native dialog opens on the machine running the server, so it's only
+  // offered when the browser is on that same machine.
+  if (c.canNativePick) $('native').style.display = '';
   if (c.needsToken && !localStorage.getItem(TOKEN_KEY)){
     const t = prompt('Access token');
     if (t) localStorage.setItem(TOKEN_KEY, t.trim());
   }
 });
 
+/* ---------------- folder browser ---------------- */
+let here = '';
+
+function openBrowser(){ $('back').classList.add('on'); load($('folder').value.trim()); }
+function closeBrowser(){ $('back').classList.remove('on'); $('newname').value=''; }
+
+async function load(path){
+  const list = $('mlist');
+  list.innerHTML = '<div class="empty">Loading…</div>';
+  let d;
+  try{
+    const r = await fetch('/api/browse?path=' + encodeURIComponent(path||''), {headers:headers()});
+    d = await readJson(r);
+    if (!r.ok || !d) throw new Error((d && d.error) || describe(r.status));
+  }catch(e){
+    list.innerHTML = `<div class="empty">${e.message}</div>`;
+    return;
+  }
+  here = d.path || '';
+  $('crumb').textContent = d.absolute;
+  list.innerHTML = '';
+
+  if (d.parent !== null && d.parent !== undefined){
+    list.appendChild(row('⬆', '.. (up one level)', () => load(d.parent)));
+  }
+  if (!d.dirs.length && (d.parent === null || d.parent === undefined)){
+    list.appendChild(Object.assign(document.createElement('div'),
+      {className:'empty', textContent:'No folders yet — create one below.'}));
+  }
+  d.dirs.forEach((name,i)=>{
+    const el = row('📁', name, () => load(here ? here + '/' + name : name));
+    el.style.animationDelay = (i*0.02)+'s';
+    list.appendChild(el);
+  });
+}
+
+function row(ico, text, onClick){
+  const el = document.createElement('div');
+  el.className = 'item';
+  el.innerHTML = `<span class="ico">${ico}</span><span></span>`;
+  el.lastElementChild.textContent = text;
+  el.addEventListener('click', onClick);
+  return el;
+}
+
+$('browse').addEventListener('click', openBrowser);
+$('cancel').addEventListener('click', closeBrowser);
+$('back').addEventListener('click', e => { if (e.target === $('back')) closeBrowser(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('back').classList.contains('on')) closeBrowser();
+});
+
+$('choose').addEventListener('click', ()=>{
+  $('folder').value = here;
+  clearErr();
+  closeBrowser();
+});
+
+$('mkdir').addEventListener('click', async ()=>{
+  const name = $('newname').value.trim();
+  if (!name) return;
+  try{
+    const r = await fetch('/api/mkdir', {method:'POST', headers:headers(),
+      body: JSON.stringify({path: here, name})});
+    const d = await readJson(r);
+    if (!r.ok || !d) throw new Error((d && d.error) || describe(r.status));
+    $('newname').value = '';
+    await load(d.path);              // drop straight into the new folder
+  }catch(e){ $('crumb').textContent = e.message; }
+});
+$('newname').addEventListener('keydown', e => { if (e.key === 'Enter') $('mkdir').click(); });
+
+$('native').addEventListener('click', async ()=>{
+  $('native').disabled = true;
+  $('crumb').textContent = 'Dialog open on the PC — pick a folder there…';
+  try{
+    const r = await fetch('/api/pick', {method:'POST', headers:headers()});
+    const d = await readJson(r);
+    if (!r.ok || !d) throw new Error((d && d.error) || describe(r.status));
+    if (!d.cancelled){ $('folder').value = d.path; closeBrowser(); clearErr(); }
+    else load(here);
+  }catch(e){ $('crumb').textContent = e.message; }
+  finally{ $('native').disabled = false; }
+});
+
 function showErr(m){ const e=$('formErr'); e.textContent=m; e.style.display='block'; }
 function clearErr(){ $('formErr').style.display='none'; }
+
+// When the PC is down or restarting, the tunnel returns an HTML error page and
+// r.json() throws a bare SyntaxError. Read the body once and parse defensively so
+// the page can say something useful instead.
+async function readJson(r){
+  let text = '';
+  try { text = await r.text(); } catch { return null; }
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+function describe(status){
+  if (status === 401) return 'Wrong or missing access token.';
+  if (status === 502) return 'Your PC is not answering — is server.py running?';
+  if (status === 503) return 'No machine registered — start server.py and tunnel.py at home.';
+  if (status >= 500) return `The machine returned an error (HTTP ${status}).`;
+  return `Request failed (HTTP ${status}).`;
+}
+
+// A stale token in localStorage otherwise locks you out with no way back.
+function forgetTokenAndAsk(){
+  localStorage.removeItem(TOKEN_KEY);
+  const t = prompt('Access token');
+  if (t) localStorage.setItem(TOKEN_KEY, t.trim());
+}
 
 async function start(){
   clearErr();
@@ -218,19 +385,48 @@ async function start(){
       bitrate:+$('bitrate').value, split:$('split').checked,
       playlist:$('playlist').checked, artist:$('artist').value.trim(),
       album:$('album').value.trim(), date:$('date').value.trim() })});
-    j = await r.json();
-  }catch(e){ $('go').disabled=false; return showErr('Server unreachable.'); }
+    j = await readJson(r);
+  }catch(e){
+    $('go').disabled=false; $('panel').classList.remove('on');
+    return showErr('Could not reach the server — check your connection.');
+  }
 
-  if (!r.ok){ $('go').disabled=false; return showErr(j.error || 'Request rejected.'); }
+  if (!r.ok){
+    $('go').disabled = false;
+    $('panel').classList.remove('on');
+    if (r.status === 401) forgetTokenAndAsk();
+    return showErr((j && j.error) || describe(r.status));
+  }
+  if (!j || !j.id){
+    $('go').disabled = false; $('panel').classList.remove('on');
+    return showErr('The server replied with something unexpected.');
+  }
   poll(j.id);
 }
 
 function poll(id){
   clearInterval(timer);
+  let misses = 0;
   timer = setInterval(async ()=>{
-    let s;
-    try{ s = await (await fetch('/api/jobs/'+id,{headers:headers()})).json(); }
-    catch(e){ return; }
+    let s = null, r = null;
+    try{
+      r = await fetch('/api/jobs/'+id, {headers:headers()});
+      s = await readJson(r);
+    }catch(e){ /* handled by the miss counter below */ }
+
+    // The job keeps running on the PC even if the page loses contact, so ride out
+    // brief blips rather than declaring failure on the first one.
+    if (!r || !r.ok || !s){
+      if (++misses < 8) return;
+      clearInterval(timer);
+      $('go').disabled = false;
+      $('bar').className = 'bar err';
+      $('bar').firstElementChild.style.width = '100%';
+      $('phase').textContent = 'Lost contact';
+      return showErr(r ? describe(r.status)
+                       : 'Lost contact with the server. The job may still be running.');
+    }
+    misses = 0;
 
     $('phase').textContent = s.phase;
     $('pct').textContent = Math.round(s.percent) + '%';
