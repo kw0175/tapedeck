@@ -23,3 +23,9 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# wrangler local state - caches your account id
+.wrangler/
+worker/.wrangler/
+node_modules/
+.dryrun/
