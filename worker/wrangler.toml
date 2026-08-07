@@ -13,7 +13,7 @@ rules = [
 # then paste the id below.
 [[kv_namespaces]]
 binding = "STATE"
-id = "201e274ac5be4c77b83fca443ada76ba"
+id = "4eb8a3a8978943ba858374c8499c79da"
 
 # ADMIN_TOKEN is a secret, not a var - set it with:
 #   wrangler secret put ADMIN_TOKEN
