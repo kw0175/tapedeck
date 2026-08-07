@@ -1,0 +1,19 @@
+name = "soundcloud-dl"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# The UI lives in ../web/index.html so the Worker and a plain local run of
+# server.py serve exactly the same page. Import it as text at build time.
+rules = [
+  { type = "Text", globs = ["**/*.html"], fallthrough = true }
+]
+
+# Holds the current tunnel URL, written by tunnel.py via /_register.
+# Create with:  wrangler kv namespace create STATE
+# then paste the id below.
+[[kv_namespaces]]
+binding = "STATE"
+id = "201e274ac5be4c77b83fca443ada76ba"
+
+# ADMIN_TOKEN is a secret, not a var - set it with:
+#   wrangler secret put ADMIN_TOKEN

@@ -26,6 +26,38 @@ Then open <http://localhost:8800>.
 Artist / Album / Year boxes override the upload's own tags. Worth filling in for
 YouTube, where the "artist" is otherwise the channel name.
 
+### Reaching it from anywhere (Cloudflare Worker + tunnel)
+
+The Worker serves the page and forwards `/api/*` to your PC. It cannot do the work
+itself — no Python, no ffmpeg, and no way to write to your music folder — so
+`server.py` still has to be running at home.
+
+Quick tunnels get a new hostname every restart, so the backend URL isn't baked in:
+`tunnel.py` reads whatever hostname it was handed and POSTs it to the Worker's
+`/_register`, which stores it in KV.
+
+One-time setup:
+
+```powershell
+cd worker
+wrangler kv namespace create STATE      # paste the id into wrangler.toml
+wrangler secret put ADMIN_TOKEN         # any long random string
+wrangler deploy
+```
+
+Then, at home, two windows:
+
+```powershell
+python server.py --root "C:\Users\Julie Festerling\Music" --token <SERVER_TOKEN>
+python tunnel.py --worker https://<name>.workers.dev --admin-token <ADMIN_TOKEN>
+```
+
+Open the Worker URL from anywhere. Two separate secrets, deliberately: `ADMIN_TOKEN`
+only lets a machine register itself, `SERVER_TOKEN` is what the page asks you for.
+
+If the PC is off or the tunnel is down, the page returns a clear 503 rather than
+failing silently.
+
 ### Exposing it
 
 `server.py` binds to `127.0.0.1` and refuses to write outside `--root`. Both
