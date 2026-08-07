@@ -10,6 +10,39 @@ private share links (`?s-...`).
 > Creative Commons material. Downloading paid or protected catalog is against
 > SoundCloud's Terms of Service.
 
+## Web UI
+
+Paste a link, name a destination folder, press Download. The job runs in the
+background: fetch best audio → split on chapters if the upload has them → convert
+→ embed artwork. The destination folder is created if it doesn't exist.
+
+```powershell
+python server.py
+python server.py --root "C:\Users\Public\AppleMusic" --port 8800
+```
+
+Then open <http://localhost:8800>.
+
+Artist / Album / Year boxes override the upload's own tags. Worth filling in for
+YouTube, where the "artist" is otherwise the channel name.
+
+### Exposing it
+
+`server.py` binds to `127.0.0.1` and refuses to write outside `--root`. Both
+matter if you put it behind a Cloudflare Tunnel or similar — an open endpoint that
+downloads arbitrary URLs onto your machine is not something to leave unauthenticated.
+
+```powershell
+python server.py --host 0.0.0.0 --token "some-long-random-string" --root "C:\Users\Public\AppleMusic"
+```
+
+The page prompts for the token once and remembers it. Starting with `--host` set to
+anything public and no `--token` prints a warning.
+
+Note this runs on **your** machine, which matters: SoundCloud and YouTube block
+datacenter IPs aggressively, so the same code on cloud hosting hits bot checks that
+a home connection doesn't.
+
 ## Setup
 
 **1. Python packages**
