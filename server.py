@@ -211,6 +211,16 @@ def run_job(job):
 
 # ---------------------------------------------------------------- http
 
+class Server(ThreadingHTTPServer):
+    """HTTPServer sets allow_reuse_address = 1, which on Windows lets a second
+    process bind a port that is already in use. Both servers then live, and
+    requests go to whichever the OS picks. That is a security problem here: start
+    a tokenless copy, start a tokenised one over it, and the tokenless one may
+    still be answering while everything looks protected. Refuse to share a port.
+    """
+    allow_reuse_address = False
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "soundcloud-dl"
 
@@ -329,11 +339,27 @@ def main():
         print("!! Bound to a public interface with no --token.\n"
               "   Anyone who can reach this page can download onto your machine.\n")
 
+    # Bind before printing anything reassuring. A silent bind failure is genuinely
+    # dangerous here: an older instance keeps serving on the port, and if that one
+    # was started without --token you end up believing a tokenless server is
+    # protected.
+    try:
+        httpd = Server((args.host, args.port), Handler)
+    except OSError as e:
+        sys.exit(f"\n!! Could not bind {args.host}:{args.port} - {e}\n"
+                 f"   Something else is already listening, most likely an older\n"
+                 f"   copy of this server. That one keeps answering, with whatever\n"
+                 f"   token settings it was started with. Find and stop it:\n\n"
+                 f"     Get-NetTCPConnection -LocalPort {args.port} -State Listen\n"
+                 f"     Stop-Process -Id <pid> -Force\n\n"
+                 f"   Or start this one on a different --port.\n")
+
     print(f"  Root  : {root}")
+    print(f"  Auth  : {'token required' if args.token else 'NONE - anyone who can reach this can use it'}")
     print(f"  Open  : http://{'localhost' if args.host == '127.0.0.1' else args.host}"
           f":{args.port}\n  Ctrl+C to stop.\n")
     try:
-        ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
+        httpd.serve_forever()
     except KeyboardInterrupt:
         print("\nStopped.")
 
