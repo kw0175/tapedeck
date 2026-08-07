@@ -71,12 +71,31 @@ def dimensions(path, ffprobe):
         return None
 
 
-def content_crop(src, ffmpeg):
-    """Find the real picture bounds, ignoring letterbox bars.
+# A real letterbox bar is essentially pure black. Album art routinely has dark
+# edges that are part of the picture, and cropdetect cannot tell them apart -
+# it flagged 76px off a genuine 1000x1000 sleeve whose background is just dark.
+BLACK_MAX_LUMA = 6.0
+MIN_TRIM_FRACTION = 0.04
 
-    YouTube serves thumbnails as 16:9 content padded into a 4:3 frame, so a plain
-    centre crop keeps the black bars and bakes them into the cover. cropdetect
-    needs several frames even on a still, hence -loop.
+
+def region_luma(src, ffmpeg, x, y, w, h):
+    """Mean brightness of a region, 0 (black) to 255."""
+    proc = subprocess.run(
+        [ffmpeg, "-hide_banner", "-loop", "1", "-i", str(src),
+         "-vf", f"crop={w}:{h}:{x}:{y},signalstats,"
+                f"metadata=print:key=lavfi.signalstats.YAVG",
+         "-frames:v", "1", "-f", "null", "-"], capture_output=True, text=True)
+    m = re.search(r"YAVG=([\d.]+)", proc.stdout + proc.stderr)
+    return float(m.group(1)) if m else None
+
+
+def content_crop(src, ffmpeg, full_w, full_h):
+    """Find real picture bounds, but only when the margins are genuinely black.
+
+    YouTube pads 16:9 thumbnails into a 4:3 frame, and those bars should go. A
+    dark photograph should not. So cropdetect only proposes a crop - it is
+    accepted only if every strip it wants to remove measures near-black and is
+    big enough to be a real bar rather than edge noise.
     """
     proc = subprocess.run(
         [ffmpeg, "-hide_banner", "-loop", "1", "-i", str(src),
@@ -86,14 +105,39 @@ def content_crop(src, ffmpeg):
     if not found:
         return None
     w, h, x, y = (int(v) for v in found[-1])
-    return (w, h, x, y) if w > 8 and h > 8 else None
+    if w < 8 or h < 8 or (w == full_w and h == full_h):
+        return None
+
+    strips = []
+    if y > 0:
+        strips.append((0, 0, full_w, y))                        # top
+    if y + h < full_h:
+        strips.append((0, y + h, full_w, full_h - (y + h)))     # bottom
+    if x > 0:
+        strips.append((0, 0, x, full_h))                        # left
+    if x + w < full_w:
+        strips.append((x + w, 0, full_w - (x + w), full_h))     # right
+    if not strips:
+        return None
+
+    # Too small to be a letterbox bar - almost certainly just dark edges.
+    if (full_h - h) < full_h * MIN_TRIM_FRACTION and \
+       (full_w - w) < full_w * MIN_TRIM_FRACTION:
+        return None
+
+    for sx, sy, sw, sh in strips:
+        luma = region_luma(src, ffmpeg, sx, sy, sw, sh)
+        if luma is None or luma > BLACK_MAX_LUMA:
+            return None                                          # real picture
+    return (w, h, x, y)
 
 
 def make_square(src, dest, size, ffmpeg, trim=True):
     """Strip letterboxing, centre-crop to a square, then scale."""
     filters, trimmed = [], None
     if trim:
-        c = content_crop(src, ffmpeg)
+        dim = dimensions(src, find_exe("ffprobe"))
+        c = content_crop(src, ffmpeg, *(dim or (0, 0))) if dim else None
         if c:
             w, h, x, y = c
             if x or y:                              # only report an actual trim
@@ -126,7 +170,16 @@ def embed(audio, art, ffmpeg):
     if proc.returncode != 0 or not tmp.exists():
         tmp.unlink(missing_ok=True)
         return proc.stderr.strip()[:200] or "ffmpeg failed"
-    tmp.replace(audio)
+    try:
+        tmp.replace(audio)
+    except PermissionError:
+        # Apple Music keeps handles on files in its own library folder, so the
+        # swap fails mid-run and leaves .__art__ files behind unless cleaned up.
+        tmp.unlink(missing_ok=True)
+        return "file is locked - quit Apple Music (or whatever has it open)"
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        return f"could not replace file: {e}"
     return None
 
 
