@@ -23,6 +23,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -37,6 +38,21 @@ CONFIG = {}
 
 
 # ---------------------------------------------------------------- helpers
+
+CONFIG_FILE = HERE / "config.local.json"
+
+
+def load_config():
+    """Read config.local.json if it's there. Gitignored, so it's a safe home for
+    tokens - keeps them off the command line and out of shell history."""
+    if not CONFIG_FILE.exists():
+        return {}
+    try:
+        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"!! Ignoring {CONFIG_FILE.name}: {e}\n")
+        return {}
+
 
 def find_exe(name):
     exe = shutil.which(name)
@@ -177,8 +193,15 @@ def run_job(job):
             job["output"] = str(target)
         log(job, f"Destination: {target}")
 
-        work = target / ".work"
-        work.mkdir(exist_ok=True)
+        # Stage everything outside the destination. A watched folder -
+        # "Automatically Add to Apple Music" is exactly that - gets swept by
+        # Apple Music the instant anything appears, including half-finished
+        # downloads and scratch metadata. Only completed tracks may land there.
+        staging = Path(tempfile.mkdtemp(prefix="scdl-"))
+        work = staging / "work"
+        work.mkdir()
+        out = staging / "out"
+        out.mkdir()
 
         # 1. download best audio, plus the metadata and thumbnail in one pass
         rc = run(job, [sys.executable, "-m", "yt_dlp",
@@ -217,7 +240,7 @@ def run_job(job):
             write_cue(cue, chapters, {"ALBUM": album, "ARTIST": artist, "DATE": date})
             rc = run(job, [sys.executable, str(HERE / "split_tracks.py"), str(audio),
                            "--cue", str(cue), "--format", job["format"],
-                           "-q", str(job["bitrate"]), "-o", str(target)], "Splitting")
+                           "-q", str(job["bitrate"]), "-o", str(out)], "Splitting")
             if rc != 0:
                 raise RuntimeError("Split failed - see log")
         else:
@@ -226,7 +249,7 @@ def run_job(job):
             ffmpeg = find_exe("ffmpeg")
             if not ffmpeg:
                 raise RuntimeError("ffmpeg not found")
-            dest = target / f"{re.sub(r'[<>:\"/\\\\|?*]', '_', title)}.{job['format']}"
+            dest = out / f"{re.sub(r'[<>:\"/\\\\|?*]', '_', title)}.{job['format']}"
             with JOBS_LOCK:
                 job["phase"] = "Converting"
             cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
@@ -247,14 +270,22 @@ def run_job(job):
                       if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}), None)
         if thumb:
             rc = run(job, [sys.executable, str(HERE / "add_art.py"), str(thumb),
-                           "-d", str(target)], "Artwork")
+                           "-d", str(out)], "Artwork")
             if rc != 0:
                 log(job, "Artwork step failed - tracks are still fine")
         else:
             log(job, "No thumbnail available; skipping artwork")
 
-        shutil.rmtree(work, ignore_errors=True)
-        made = sorted(f.name for f in target.iterdir() if f.is_file())
+        # Move finished files in last, so a watched destination only ever sees
+        # complete, tagged tracks - never a partial one it would import broken.
+        with JOBS_LOCK:
+            job["phase"] = "Moving"
+        made = []
+        for f in sorted(out.iterdir()):
+            if f.is_file():
+                shutil.move(str(f), str(target / f.name))
+                made.append(f.name)
+        shutil.rmtree(staging, ignore_errors=True)
         with JOBS_LOCK:
             job.update(status="done", phase="Done", percent=100,
                        files=made, finished=time.time())
@@ -439,13 +470,17 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Local web UI for the downloader.")
-    p.add_argument("--host", default="127.0.0.1",
+    cfg = load_config()
+    p = argparse.ArgumentParser(
+        description="Local web UI for the downloader.",
+        epilog="Values default to config.local.json when present; flags override it.")
+    p.add_argument("--host", default=cfg.get("host", "127.0.0.1"),
                    help="bind address (default: 127.0.0.1, local only)")
-    p.add_argument("--port", type=int, default=8800)
-    p.add_argument("--root", default=str(Path.home() / "Music"),
+    p.add_argument("--port", type=int, default=int(cfg.get("port", 8800)))
+    p.add_argument("--root", default=cfg.get("root") or str(Path.home() / "Music"),
                    help="destination folders must live under this (default: ~/Music)")
-    p.add_argument("--token", help="require this token in an X-Token header")
+    p.add_argument("--token", default=cfg.get("token"),
+                   help="require this token in an X-Token header")
     args = p.parse_args()
 
     root = Path(args.root).expanduser().resolve()

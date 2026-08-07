@@ -35,6 +35,21 @@ print = functools.partial(print, flush=True)                     # noqa: A001
 URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
+CONFIG_FILE = Path(__file__).resolve().parent / "config.local.json"
+
+
+def load_config():
+    """Read config.local.json if it's there. Gitignored, so it's a safe home for
+    tokens - keeps them off the command line and out of shell history."""
+    if not CONFIG_FILE.exists():
+        return {}
+    try:
+        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"!! Ignoring {CONFIG_FILE.name}: {e}\n")
+        return {}
+
+
 def find_cloudflared():
     exe = shutil.which("cloudflared")
     if exe:
@@ -90,11 +105,22 @@ def local_up(port):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Tunnel the local server and register it.")
-    p.add_argument("--worker", required=True, help="your Worker's base URL")
-    p.add_argument("--admin-token", required=True, help="the Worker's ADMIN_TOKEN secret")
-    p.add_argument("--port", type=int, default=8800, help="local server port")
+    cfg = load_config()
+    p = argparse.ArgumentParser(
+        description="Tunnel the local server and register it.",
+        epilog="Values default to config.local.json when present; flags override it.")
+    p.add_argument("--worker", default=cfg.get("worker"), help="your Worker's base URL")
+    p.add_argument("--admin-token", default=cfg.get("adminToken"),
+                   help="the Worker's ADMIN_TOKEN secret")
+    p.add_argument("--port", type=int, default=int(cfg.get("port", 8800)),
+                   help="local server port")
     args = p.parse_args()
+
+    missing = [n for n, v in (("--worker", args.worker),
+                              ("--admin-token", args.admin_token)) if not v]
+    if missing:
+        p.error(f"missing {' and '.join(missing)} - pass them, or put "
+                f"\"worker\" and \"adminToken\" in {CONFIG_FILE.name}")
 
     cf = find_cloudflared()
     if not cf:

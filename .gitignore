@@ -29,3 +29,6 @@ venv/
 worker/.wrangler/
 node_modules/
 .dryrun/
+
+# local secrets - never commit
+config.local.json

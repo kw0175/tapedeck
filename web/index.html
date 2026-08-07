@@ -241,6 +241,20 @@ function headers(){
   return h;
 }
 
+// Accept ?token=... so a bookmarked link authenticates itself. localStorage does
+// not survive a private window, which otherwise means re-typing the token every
+// single visit. Strip it from the address bar straight away so it isn't sitting
+// on screen or captured by a later share of the URL.
+(function(){
+  const u = new URL(location.href);
+  const t = u.searchParams.get('token');
+  if (t){
+    localStorage.setItem(TOKEN_KEY, t.trim());
+    u.searchParams.delete('token');
+    history.replaceState({}, '', u.pathname + u.search + u.hash);
+  }
+})();
+
 let ROOT = '';
 fetch('/api/config').then(r=>r.json()).then(c=>{
   ROOT = c.root;
@@ -260,12 +274,18 @@ let here = '';
 function openBrowser(){ $('back').classList.add('on'); load($('folder').value.trim()); }
 function closeBrowser(){ $('back').classList.remove('on'); $('newname').value=''; }
 
-async function load(path){
+async function load(path, retried){
   const list = $('mlist');
   list.innerHTML = '<div class="empty">Loading…</div>';
   let d;
   try{
     const r = await fetch('/api/browse?path=' + encodeURIComponent(path||''), {headers:headers()});
+    // A stale token in localStorage otherwise leaves you stuck reading
+    // "bad or missing token" with no way to correct it. Ask once, then retry.
+    if (r.status === 401 && !retried){
+      forgetTokenAndAsk();
+      return load(path, true);
+    }
     d = await readJson(r);
     if (!r.ok || !d) throw new Error((d && d.error) || describe(r.status));
   }catch(e){
