@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-soundcloud_dl.py - download SoundCloud tracks/sets/likes as MP3 (or other formats).
+tapedeck.py - download audio from any site yt-dlp supports, as MP3 (or other formats).
 
 Wraps yt-dlp (extraction) + ffmpeg (transcode/tagging). Handles single tracks,
 playlists/sets, whole user profiles, and private share links.
 
 Examples:
-    python soundcloud_dl.py https://soundcloud.com/artist/track-name
-    python soundcloud_dl.py URL1 URL2 URL3 -o "D:/Music"
-    python soundcloud_dl.py --batch urls.txt --archive done.txt
-    python soundcloud_dl.py https://soundcloud.com/artist/sets/my-set --playlist-folder
-    python soundcloud_dl.py --format best URL          # keep original file, no transcode
-    python soundcloud_dl.py --cookies-from-browser chrome URL   # your own private tracks
+    python tapedeck.py https://soundcloud.com/artist/track-name
+    python tapedeck.py URL1 URL2 URL3 -o "D:/Music"
+    python tapedeck.py --batch urls.txt --archive done.txt
+    python tapedeck.py https://soundcloud.com/artist/sets/my-set --playlist-folder
+    python tapedeck.py --format best URL          # keep original file, no transcode
+    python tapedeck.py --cookies-from-browser chrome URL   # your own private tracks
 """
 
 import argparse

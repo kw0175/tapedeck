@@ -349,7 +349,7 @@ class Server(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "soundcloud-dl"
+    server_version = "tapedeck"
 
     def log_message(self, *a):
         pass                                                # quiet console

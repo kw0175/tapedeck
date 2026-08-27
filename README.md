@@ -1,14 +1,48 @@
-# soundcloud DL
+# tapedeck
 
-Command-line downloader that turns SoundCloud URLs into tagged MP3s (or m4a/opus/flac/wav).
-Wraps [yt-dlp](https://github.com/yt-dlp/yt-dlp) for extraction and ffmpeg for conversion.
+Pull a concert, DJ set or single track off the web and file it into your music
+library — split into numbered tracks, tagged, with artwork, ready for Apple Music
+or anything else that reads a folder of MP3s.
 
-Works on single tracks, sets/playlists, whole user profiles, likes pages, and
-private share links (`?s-...`).
+Runs on your own machine. Nothing is uploaded anywhere and there is no service in
+the middle.
 
-> Intended for your own uploads, tracks the artist has marked downloadable, and
-> Creative Commons material. Downloading paid or protected catalog is against
-> SoundCloud's Terms of Service.
+Built on [yt-dlp](https://github.com/yt-dlp/yt-dlp) for fetching and
+[ffmpeg](https://ffmpeg.org/) for audio work.
+
+## Where it can read from
+
+yt-dlp supports around 1,750 sites, and tapedeck passes URLs straight through, so
+anything it handles works here. Commonly:
+
+**YouTube** · **SoundCloud** · **Vimeo** · **Dailymotion** · **Bandcamp** ·
+**Mixcloud** · **Twitch** · **Internet Archive**
+
+Worth knowing about the last one: the Internet Archive's
+[Live Music Archive](https://archive.org/details/etree) holds tens of thousands of
+live concert recordings that the artists have explicitly authorised for free
+distribution. If you are after live shows, start there — it is the largest source
+that is unambiguously yours to keep.
+
+Chapter-based splitting needs the site to expose chapter markers, which in
+practice means YouTube. Everywhere else, tapedeck detects track boundaries from
+the audio itself.
+
+## What this is for
+
+tapedeck is a personal archiving tool. It is built for material you already have
+a right to: your own uploads, artist-authorised downloads, Creative Commons and
+public-domain works, and the taper-authorised recordings on the Live Music
+Archive.
+
+It does not circumvent DRM, and cannot — yt-dlp decodes nothing that is
+encrypted. It has no sharing, hosting or upload features. Everything it produces
+stays on the machine that ran it.
+
+Downloading commercial catalogue generally conflicts with the terms of service of
+the site it came from, whatever the copyright position where you live. That is
+your call and your responsibility. This project does not condone redistributing
+licensed material, and is not affiliated with any of the platforms it can read.
 
 ## Web UI
 
@@ -96,25 +130,25 @@ Close and reopen your terminal afterward so `ffmpeg` lands on `PATH`. Verify wit
 
 ```powershell
 # one track -> ./downloads/Artist - Title.mp3
-python soundcloud_dl.py https://soundcloud.com/artist/track-name
+python tapedeck.py https://soundcloud.com/artist/track-name
 
 # several at once, into a specific folder
-python soundcloud_dl.py URL1 URL2 URL3 -o "D:\Music"
+python tapedeck.py URL1 URL2 URL3 -o "D:\Music"
 
 # a whole set, numbered, in its own subfolder
-python soundcloud_dl.py https://soundcloud.com/artist/sets/my-set --playlist-folder
+python tapedeck.py https://soundcloud.com/artist/sets/my-set --playlist-folder
 
 # a list of URLs from a file
-python soundcloud_dl.py --batch urls.txt
+python tapedeck.py --batch urls.txt
 
 # skip anything already grabbed on a previous run
-python soundcloud_dl.py --batch urls.txt --archive done.txt
+python tapedeck.py --batch urls.txt --archive done.txt
 
 # keep the original file, no transcode (fastest, no quality loss)
-python soundcloud_dl.py --format best URL
+python tapedeck.py --format best URL
 
 # your own private/unlisted uploads (reads your logged-in browser session)
-python soundcloud_dl.py --cookies-from-browser chrome URL
+python tapedeck.py --cookies-from-browser chrome URL
 ```
 
 ### Options
