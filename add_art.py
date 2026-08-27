@@ -103,7 +103,8 @@ def _get_json(url, timeout=25, attempts=4):
 
 def musicbrainz_releases(artist, album, limit=8):
     """Releases matching an artist/album, best match first."""
-    q = urllib.parse.quote(f'artist:"{artist}" AND release:"{album}"')
+    q = urllib.parse.quote(f'artist:"{artist}" AND release:"{album}"' if artist
+                           else f'release:"{album}"')
     try:
         data = _get_json(f"https://musicbrainz.org/ws/2/release?query={q}"
                          f"&fmt=json&limit={limit}")
@@ -129,48 +130,121 @@ def cover_art_url(mbid, kind="release"):
     return None
 
 
-def search_cover(artist, album, dest, ffprobe, log=print):
-    """Find real release artwork for artist/album. Returns a path or None.
 
-    Deliberately prefers a genuine sleeve over a video thumbnail: a thumbnail is
-    a 16:9 frame that loses a third of itself when squared, then gets upscaled.
+
+def _norm(t):
+    return re.sub(r"[^a-z0-9]+", "", (t or "").lower())
+
+
+def artist_matches(wanted, candidate):
+    """Reject a result whose artist is not the one asked for.
+
+    Searching "Oasis Rock in Rio" on iTunes returns unrelated albums. Picking the
+    largest image without checking would embed another band's cover with total
+    confidence - worse than falling back to the thumbnail.
     """
-    if not (artist and album):
-        return None
-    log(f"Searching MusicBrainz for {artist} - {album} ...")
+    if not wanted:
+        return True
+    w, c = _norm(wanted), _norm(candidate)
+    return bool(w) and bool(c) and (w in c or c in w)
+
+
+def itunes_covers(artist, album):
+    """Apple's public search API. No key, big catalogue, high-res art.
+
+    artworkUrl100 is a thumbnail, but the size is just a path segment - asking
+    for 1200x1200 returns the real thing.
+    """
+    term = urllib.parse.quote(f"{artist} {album}".strip())
+    try:
+        data = _get_json(f"https://itunes.apple.com/search?term={term}"
+                         f"&entity=album&limit=6", attempts=2)
+    except Exception:                                            # noqa: BLE001
+        return []
+    out = []
+    for r in data.get("results", []):
+        url = r.get("artworkUrl100")
+        if url and artist_matches(artist, r.get("artistName")):
+            out.append((re.sub(r"/\d+x\d+bb", "/1200x1200bb", url),
+                        f"{r.get('artistName','?')} - {r.get('collectionName','?')}"))
+    return out
+
+
+def deezer_covers(artist, album):
+    """Deezer's public API. No key. cover_xl is 1000x1000."""
+    q = urllib.parse.quote(f"{artist} {album}".strip())
+    try:
+        data = _get_json(f"https://api.deezer.com/search/album?q={q}&limit=6",
+                         attempts=2)
+    except Exception:                                            # noqa: BLE001
+        return []
+    return [(a["cover_xl"], f"{a.get('artist',{}).get('name','?')} - {a.get('title','?')}")
+            for a in data.get("data", [])
+            if a.get("cover_xl") and artist_matches(artist, a.get("artist", {}).get("name"))]
+
+
+def coverartarchive_covers(artist, album):
+    """MusicBrainz + Cover Art Archive. Best for genuinely archived releases,
+    including some unofficial ones, but thin on live bootlegs."""
     try:
         releases = musicbrainz_releases(artist, album)
-    except LookupError as e:
-        log(f"  {e}")
-        return None
-    if not releases:
-        log("  no matching release found")
-        return None
-
-    best = None
-    for mbid, title, year in releases[:6]:
+    except LookupError:
+        return []
+    out = []
+    for mbid, title, year in releases[:4]:
         time.sleep(MB_DELAY)
         url = cover_art_url(mbid)
-        if not url:
-            continue
-        try:
-            fetch(url, dest)
-        except Exception:                                        # noqa: BLE001
-            continue
-        dim = dimensions(dest, ffprobe) if ffprobe else None
-        side = min(dim) if dim else 0
-        log(f"  found: {title} ({year or '?'}) - {dim[0]}x{dim[1]}" if dim
-            else f"  found: {title} ({year or '?'})")
-        if side >= 1000:                       # good enough, stop paying the rate limit
-            return dest
-        if best is None or side > best[0]:
-            best = (side, dest.read_bytes())
-    if best:
-        dest.write_bytes(best[1])
-        return dest
-    log("  matched a release, but no artwork is archived for it")
-    return None
+        if url:
+            out.append((url, f"{title} ({year or '?'})"))
+    return out
 
+
+def search_cover(artist, album, dest, ffprobe, log=print):
+    """Find real release artwork. Returns a path or None.
+
+    Tries several catalogues because no single one covers live and unofficial
+    recordings well. Candidates are judged on the actual pixels returned, not on
+    which source produced them.
+    """
+    if not album:
+        return None
+    log(f"Searching for artwork: {artist or '(any artist)'} - {album}")
+
+    best = None                                   # (side, bytes, label, source)
+    for name, fn in (("iTunes", itunes_covers),
+                     ("Deezer", deezer_covers),
+                     ("CoverArtArchive", coverartarchive_covers)):
+        try:
+            candidates = fn(artist, album)
+        except Exception as e:                                   # noqa: BLE001
+            log(f"  {name}: unavailable ({e})")
+            continue
+        if not candidates:
+            log(f"  {name}: nothing")
+            continue
+        for url, label in candidates[:4]:
+            try:
+                fetch(url, dest)
+            except Exception:                                    # noqa: BLE001
+                continue
+            dim = dimensions(dest, ffprobe) if ffprobe else None
+            side = min(dim) if dim else 0
+            if not side:
+                continue
+            log(f"  {name}: {label} - {dim[0]}x{dim[1]}")
+            if best is None or side > best[0]:
+                best = (side, dest.read_bytes(), label, name)
+            if side >= 1000:
+                break
+        if best and best[0] >= 1000:
+            break                                  # good enough; stop querying
+
+    if not best:
+        log("  nothing found in any catalogue")
+        return None
+    dest.write_bytes(best[1])
+    log(f"  using {best[3]}: {best[2]} ({best[0]}px)")
+    return dest
 
 def dimensions(path, ffprobe):
     out = subprocess.run(
@@ -315,8 +389,7 @@ def main():
     src.add_argument("--from-track", metavar="URL",
                      help="use the artwork of this SoundCloud/YouTube track")
     p.add_argument("--search-artist", metavar="NAME",
-                   help="look up real release artwork on MusicBrainz / Cover Art "
-                        "Archive (needs --search-album)")
+                   help="narrow the MusicBrainz search; optional")
     p.add_argument("--search-album", metavar="TITLE", help="album title to search for")
     p.add_argument("--fallback", metavar="FILE",
                    help="image to use only if the search finds nothing")
@@ -349,7 +422,7 @@ def main():
 
         # A real sleeve beats a video thumbnail: a thumbnail is a 16:9 frame that
         # loses a third of itself when squared, then gets upscaled to fake the size.
-        if args.search_artist and args.search_album:
+        if args.search_album:
             got = search_cover(args.search_artist, args.search_album, raw, ffprobe)
 
         if got is None and args.image:

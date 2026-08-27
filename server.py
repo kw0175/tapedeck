@@ -228,6 +228,33 @@ def write_cue(path, chapters, meta):
 
 # ---------------------------------------------------------------- the job
 
+
+def guess_artist_album(job, info):
+    """Work out what to search the Cover Art Archive for.
+
+    Prefers what the user typed, then the upload's own music tags, then the
+    title. Requiring the boxes to be filled meant most downloads skipped the
+    search entirely and went straight to the thumbnail.
+    """
+    artist = (job.get("artist") or info.get("artist") or "").strip()
+    album = (job.get("album") or info.get("album") or "").strip()
+    if artist and album:
+        return artist, album
+
+    # "Oasis - Rock in Rio 2001 (Full Concert) [HD]" -> "Oasis", "Rock in Rio 2001"
+    title = (info.get("title") or "").strip()
+    clean = re.sub(r"[\(\[\*].*?[\)\]\*]", " ", title)
+    clean = re.sub(r"\s+", " ", clean).strip(" -–—")
+    if not album:
+        if " - " in clean:
+            head, _, tail = clean.partition(" - ")
+            artist = artist or head.strip()
+            album = tail.strip()
+        else:
+            album = clean
+    return artist.strip(), album.strip()
+
+
 def run_job(job):
     try:
         target = safe_target(job["folder"])
@@ -339,10 +366,14 @@ def run_job(job):
         # 16:9 frame: squaring it discards a third of the picture and what's left
         # is small. Only fall back to it when nothing is archived for the album.
         art_cmd = [sys.executable, str(HERE / "add_art.py"), "-d", str(out)]
-        if artist and album:
-            art_cmd += ["--search-artist", artist, "--search-album", album]
+        s_artist, s_album = guess_artist_album(job, info)
+        if s_album:
+            art_cmd += ["--search-album", s_album]
+            if s_artist:
+                art_cmd += ["--search-artist", s_artist]
+            log(job, f"Artwork search: {s_artist or '(any artist)'} - {s_album}")
         if thumb:
-            art_cmd += ["--fallback", str(thumb)] if (artist and album) else [str(thumb)]
+            art_cmd += ["--fallback", str(thumb)] if s_album else [str(thumb)]
         if len(art_cmd) > 4:
             rc = run(job, art_cmd, "Artwork")
             if rc != 0:
