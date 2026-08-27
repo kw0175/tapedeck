@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import subprocess
+import winquiet  # noqa: F401  (patches subprocess on import)
 import sys
 import tempfile
 import threading
@@ -352,11 +353,14 @@ def run_job(job):
             raise RuntimeError("Downloaded file not found")
         log(job, f"Got: {audio.name}")
 
-        # Fall back to the uploader only when nothing better was given - a YouTube
-        # channel name is rarely the artist you want in a library.
+        # One source of truth for both the tags and the artwork search.
+        # Never fall back to the uploader: a YouTube channel name in the artist
+        # tag files the album under "Venetik" rather than "Oasis", and then the
+        # artwork lookup searches for a band that does not exist. Better to
+        # leave artist empty than to write a channel name into a library.
         title = info.get("title") or audio.stem
-        album = job["album"] or info.get("album") or title
-        artist = job["artist"] or info.get("artist") or info.get("uploader") or ""
+        artist, album = guess_artist_album(job, info)
+        album = album or title
         date = job["date"] or str(info.get("release_year") or "")
         chapters = info.get("chapters") or []
 

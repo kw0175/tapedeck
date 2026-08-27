@@ -31,6 +31,8 @@ if sys.stdout is None or sys.stderr is None:
 # When frozen, the exe re-runs itself to stand in for `python <script>`:
 # sys.executable is tapedeck.exe, not a Python interpreter, so the usual
 # subprocess calls would fail. server.py builds commands via child_cmd().
+import winquiet  # noqa: F401  (before any child runs)
+
 if getattr(sys, "frozen", False) and len(sys.argv) > 2 and sys.argv[1] == "--child":
     _target, _rest = sys.argv[2], sys.argv[3:]
     sys.argv = [_target] + _rest
@@ -45,6 +47,7 @@ if getattr(sys, "frozen", False) and len(sys.argv) > 2 and sys.argv[1] == "--chi
         sys.exit(add_art.main())
     sys.exit(f"unknown child target: {_target}")
 
+import winquiet  # noqa: F401  (patches subprocess so children get no console)
 import server
 
 

@@ -36,6 +36,7 @@ import os
 import re
 import shutil
 import subprocess
+import winquiet  # noqa: F401  (patches subprocess on import)
 import sys
 from pathlib import Path
 
