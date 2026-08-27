@@ -151,11 +151,53 @@ all:
 pip install -U yt-dlp
 ```
 
+## config.local.json
+
+Both scripts read `config.local.json` from the repo folder, so tokens stay off
+the command line and out of shell history. It is gitignored. Flags override it.
+
+```json
+{
+  "root": "C:\Users\<you>\Music",
+  "port": 8800,
+  "token": "<what the page asks you for>",
+  "worker": "https://<your-worker>.workers.dev",
+  "adminToken": "<the Worker's ADMIN_TOKEN secret>",
+  "wait": 300,
+  "cookiesFromBrowser": "firefox"
+}
+```
+
+| Key | Used by | What it does |
+|---|---|---|
+| `root` | server | Destination folders must live under this |
+| `port` | both | Local server port (default 8800) |
+| `token` | server | Required in an `X-Token` header |
+| `worker` | tunnel | Worker base URL to register with |
+| `adminToken` | tunnel | Lets a machine register itself |
+| `wait` | tunnel | Seconds to wait for the server at logon |
+| `cookiesFromBrowser` | server | Browser to borrow a logged-in session from |
+
+### cookiesFromBrowser
+
+YouTube increasingly answers anonymous requests with **"Sign in to confirm
+you're not a bot"**, which kills extraction outright. It is a different failure
+from the 403 above and Deno does not help — the fix is lending yt-dlp your
+browser's logged-in session.
+
+Set it to `firefox`, `chrome`, `edge`, `brave`, `opera`, `vivaldi` or `safari`.
+Off by default: reading a browser's cookie store is not something a tool should
+do uninvited. Cookies are handed to yt-dlp locally and go nowhere else.
+
+On Windows, **Firefox is the easy one** — Chrome and Edge lock their cookie
+database while running, so they have to be closed first.
+
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
 | `HTTP 403 Forbidden` on YouTube | Deno missing, or yt-dlp out of date |
+| `Sign in to confirm you're not a bot` | Set `cookiesFromBrowser` (see above) |
 | Page loads but every action 404s | The Worker was redeployed over — see the Worker section |
 | Page returns 503 | `server.py` or `tunnel.py` isn't running |
 | Page returns 530 | Tunnel is registered but your PC is unreachable |
