@@ -21,6 +21,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import json
+import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -67,6 +71,105 @@ def thumbnail_of(track_url):
         if line.startswith("http"):
             return line.strip()
     sys.exit(f"Could not find artwork for {track_url}")
+
+
+# MusicBrainz asks that clients identify themselves and stay under ~1 req/sec.
+MB_UA = "tapedeck/1.0 ( https://github.com/kw0175/tapedeck )"
+MB_DELAY = 1.1
+
+
+def _get_json(url, timeout=25, attempts=4):
+    """GET JSON, retrying on throttling.
+
+    MusicBrainz answers bursts with 503. Treating that as "no results" is worse
+    than useless - it reports that a release does not exist when the server was
+    merely busy - so back off and retry, and let a real failure raise.
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": MB_UA,
+                                               "Accept": "application/json"})
+    delay = 1.5
+    for i in range(attempts):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            if e.code in (503, 429) and i < attempts - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            raise
+    return {}
+
+
+def musicbrainz_releases(artist, album, limit=8):
+    """Releases matching an artist/album, best match first."""
+    q = urllib.parse.quote(f'artist:"{artist}" AND release:"{album}"')
+    try:
+        data = _get_json(f"https://musicbrainz.org/ws/2/release?query={q}"
+                         f"&fmt=json&limit={limit}")
+    except Exception as e:                                       # noqa: BLE001
+        raise LookupError(f"could not reach MusicBrainz: {e}") from e
+    return [(r.get("id"), r.get("title", ""), (r.get("date") or "")[:4])
+            for r in data.get("releases", []) if r.get("id")]
+
+
+def cover_art_url(mbid, kind="release"):
+    """Front-cover URL from the Cover Art Archive, or None.
+
+    404 here is the normal answer for a release nobody has uploaded art for -
+    most live bootlegs - so it is not worth logging as an error.
+    """
+    try:
+        data = _get_json(f"https://coverartarchive.org/{kind}/{mbid}")
+    except Exception:                                            # noqa: BLE001
+        return None
+    for img in data.get("images", []):
+        if img.get("front") and img.get("image"):
+            return img["image"].replace("http://", "https://")
+    return None
+
+
+def search_cover(artist, album, dest, ffprobe, log=print):
+    """Find real release artwork for artist/album. Returns a path or None.
+
+    Deliberately prefers a genuine sleeve over a video thumbnail: a thumbnail is
+    a 16:9 frame that loses a third of itself when squared, then gets upscaled.
+    """
+    if not (artist and album):
+        return None
+    log(f"Searching MusicBrainz for {artist} - {album} ...")
+    try:
+        releases = musicbrainz_releases(artist, album)
+    except LookupError as e:
+        log(f"  {e}")
+        return None
+    if not releases:
+        log("  no matching release found")
+        return None
+
+    best = None
+    for mbid, title, year in releases[:6]:
+        time.sleep(MB_DELAY)
+        url = cover_art_url(mbid)
+        if not url:
+            continue
+        try:
+            fetch(url, dest)
+        except Exception:                                        # noqa: BLE001
+            continue
+        dim = dimensions(dest, ffprobe) if ffprobe else None
+        side = min(dim) if dim else 0
+        log(f"  found: {title} ({year or '?'}) - {dim[0]}x{dim[1]}" if dim
+            else f"  found: {title} ({year or '?'})")
+        if side >= 1000:                       # good enough, stop paying the rate limit
+            return dest
+        if best is None or side > best[0]:
+            best = (side, dest.read_bytes())
+    if best:
+        dest.write_bytes(best[1])
+        return dest
+    log("  matched a release, but no artwork is archived for it")
+    return None
 
 
 def dimensions(path, ffprobe):
@@ -153,6 +256,15 @@ def make_square(src, dest, size, ffmpeg, trim=True):
             if x or y:                              # only report an actual trim
                 trimmed = (w, h, x, y)
             filters.append(f"crop={w}:{h}:{x}:{y}")
+    # Never invent pixels. Upscaling a small cover to hit a target number makes
+    # a soft image that merely claims to be 1000px; better to ship what exists.
+    dim_now = dimensions(src, find_exe("ffprobe"))
+    if dim_now:
+        available = min(dim_now)
+        if trimmed:
+            available = min(trimmed[0], trimmed[1])
+        if available and available < size:
+            size = available
     filters.append("crop='min(iw,ih)':'min(iw,ih)'")
     filters.append(f"scale={size}:{size}:flags=lanczos")
     subprocess.run(
@@ -197,14 +309,21 @@ def main():
     p = argparse.ArgumentParser(
         description="Embed album artwork into a folder of audio files.",
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    src = p.add_mutually_exclusive_group(required=True)
+    src = p.add_mutually_exclusive_group()
     src.add_argument("image", nargs="?", help="local image file")
     src.add_argument("--url", help="download the image from here")
     src.add_argument("--from-track", metavar="URL",
                      help="use the artwork of this SoundCloud/YouTube track")
+    p.add_argument("--search-artist", metavar="NAME",
+                   help="look up real release artwork on MusicBrainz / Cover Art "
+                        "Archive (needs --search-album)")
+    p.add_argument("--search-album", metavar="TITLE", help="album title to search for")
+    p.add_argument("--fallback", metavar="FILE",
+                   help="image to use only if the search finds nothing")
     p.add_argument("-d", "--dir", required=True, help="folder of audio files")
-    p.add_argument("--size", type=int, default=500,
-                   help="output cover size in pixels, square (default: 500)")
+    p.add_argument("--size", type=int, default=1000,
+                   help="output cover size in pixels, square (default: 1000 - "
+                        "Apple Music and Spotify both want >=1000)")
     p.add_argument("--no-trim", action="store_true",
                    help="keep letterbox bars instead of cropping them off")
     p.add_argument("--no-cover-file", action="store_true",
@@ -226,12 +345,28 @@ def main():
 
     with tempfile.TemporaryDirectory() as td:
         raw = Path(td) / "raw.img"
-        if args.image:
+        got = None
+
+        # A real sleeve beats a video thumbnail: a thumbnail is a 16:9 frame that
+        # loses a third of itself when squared, then gets upscaled to fake the size.
+        if args.search_artist and args.search_album:
+            got = search_cover(args.search_artist, args.search_album, raw, ffprobe)
+
+        if got is None and args.image:
             shutil.copyfile(Path(args.image).expanduser().resolve(), raw)
-        else:
+            got = raw
+        elif got is None and (args.url or args.from_track):
             url = args.url or thumbnail_of(args.from_track)
             print(f"Fetching {url}")
             fetch(url, raw)
+            got = raw
+        elif got is None and args.fallback:
+            print("Falling back to the supplied image.")
+            shutil.copyfile(Path(args.fallback).expanduser().resolve(), raw)
+            got = raw
+
+        if got is None:
+            sys.exit("No artwork found, and no image or --fallback given.")
 
         dim = dimensions(raw, ffprobe)
         print(f"Source art : {dim[0]}x{dim[1]}" if dim else "Source art : unknown")
@@ -245,8 +380,14 @@ def main():
             w, h, x, y = trimmed
             print(f"             letterboxing detected - trimmed to {w}x{h} "
                   f"(dropped {x}px sides, {y}px top/bottom)")
-        print(f"Cover      : {args.size}x{args.size}  "
-              f"({art.stat().st_size / 1024:.0f} KB)")
+        # Report what was actually produced. Printing the requested size would
+        # claim 1000x1000 for a cover that was capped to the source's real size.
+        made = dimensions(art, ffprobe)
+        shown = f"{made[0]}x{made[1]}" if made else f"{args.size}x{args.size}"
+        note = ""
+        if made and made[0] < args.size:
+            note = f"  (source was {made[0]}px; not upscaled to {args.size})"
+        print(f"Cover      : {shown}  ({art.stat().st_size / 1024:.0f} KB){note}")
         print(f"Folder     : {folder}")
         print(f"Tracks     : {len(tracks)}\n")
 

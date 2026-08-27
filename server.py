@@ -335,13 +335,20 @@ def run_job(job):
         # 3. artwork, from the thumbnail we already pulled down
         thumb = next((f for f in work.iterdir()
                       if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}), None)
+        # Prefer a real release sleeve over the video thumbnail. A thumbnail is a
+        # 16:9 frame: squaring it discards a third of the picture and what's left
+        # is small. Only fall back to it when nothing is archived for the album.
+        art_cmd = [sys.executable, str(HERE / "add_art.py"), "-d", str(out)]
+        if artist and album:
+            art_cmd += ["--search-artist", artist, "--search-album", album]
         if thumb:
-            rc = run(job, [sys.executable, str(HERE / "add_art.py"), str(thumb),
-                           "-d", str(out)], "Artwork")
+            art_cmd += ["--fallback", str(thumb)] if (artist and album) else [str(thumb)]
+        if len(art_cmd) > 4:
+            rc = run(job, art_cmd, "Artwork")
             if rc != 0:
                 log(job, "Artwork step failed - tracks are still fine")
         else:
-            log(job, "No thumbnail available; skipping artwork")
+            log(job, "No artwork source available; skipping")
 
         # Move finished files in last, so a watched destination only ever sees
         # complete, tagged tracks - never a partial one it would import broken.
