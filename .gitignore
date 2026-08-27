@@ -37,3 +37,6 @@ config.local.json
 *-cue.txt
 *-tracklist.txt
 !examples/*.example.txt
+
+# Real worker config holds your own KV namespace id; ship the example instead
+worker/wrangler.toml
