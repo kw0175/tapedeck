@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Downloader</title>
+<title>tapedeck</title>
 <style>
   :root{
     --bg:#0b1220; --bg2:#0f1830; --card:#141f3a; --card2:#1a2748;
@@ -26,6 +26,50 @@
   header{margin-bottom:26px;animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
   h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.01em}
   .sub{color:var(--dim);font-size:13px;margin-top:5px}
+
+  .brand{display:flex;align-items:center;gap:9px}
+  .mark{width:74px;height:64px;color:var(--accent2);flex:0 0 auto;
+        filter:drop-shadow(0 3px 10px rgba(91,140,255,.35))}
+  /* Colour cycles always; the bob only while a job runs, so motion still
+     means something is happening. */
+  .mark{transform-origin:50% 60%; animation:hue 9s linear infinite;
+        transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+  /* Reacts to you touching a control, so the app feels like it noticed. */
+  /* One face at a time. Each expression maps to something the app is doing,
+     so the cat is a status indicator rather than decoration. */
+  .mouth,.eyes{transition:opacity .18s ease}
+  .mouth{opacity:0}
+  .mouth.rest{opacity:1}
+  .eyes.wide{opacity:0}
+
+  body.smirk    .mouth{opacity:0} body.smirk    .mouth.smirk{opacity:1}
+  body.busy     .mouth{opacity:0} body.busy     .mouth.work {opacity:1}
+  body.pleased  .mouth{opacity:0} body.pleased  .mouth.done {opacity:1}
+  body.startled .mouth{opacity:0} body.startled .mouth.oops {opacity:1}
+
+  body.startled .eyes.calm{opacity:0}
+  body.startled .eyes.wide{opacity:1}
+
+  .eyes{transition:opacity .18s ease, transform .2s ease; transform-origin:28px 25px}
+  body.smirk .eyes.calm{transform:translateY(-.6px) scaleY(.82)}
+  body.busy  .eyes.calm{transform:scaleY(.7)}
+
+  body.smirk    .mark{transform:rotate(-5deg) scale(1.06)}
+  body.pleased  .mark{transform:scale(1.1)}
+  body.startled .mark{transform:rotate(4deg)}
+  body.working .mark{animation:hue 9s linear infinite, bob 1.9s ease-in-out infinite}
+  @keyframes hue{
+    0%  {color:#7aa2ff}
+    20% {color:#8f7dff}
+    40% {color:#ff7ad0}
+    60% {color:#ffb36b}
+    80% {color:#4fd6b0}
+    100%{color:#7aa2ff}
+  }
+  @keyframes bob{
+    0%,100%{transform:rotate(-3deg) translateY(0)}
+    50%    {transform:rotate(3deg)  translateY(-2px)}
+  }
 
   .card{
     background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%);
@@ -138,15 +182,57 @@
 <div class="wrap">
 
   <header>
-    <h1>Downloader</h1>
-    <div class="sub">Paste a link, pick a folder. Splits on chapters automatically.</div>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 56 48" aria-hidden="true"
+           fill="none" stroke="currentColor" stroke-width="2.6"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 19 L13 5 L22.5 11.5 C25 10 31 10 33.5 11.5 L43 5 L45 19
+                 C47 24 46 33 40 38 C36 41.5 20 41.5 16 38 C10 33 9 24 11 19 Z"/>
+        <g class="eyes calm">
+          <path d="M17.5 26 Q21 22.2 24.5 26"/>
+          <path d="M31.5 26 Q35 22.2 38.5 26"/>
+        </g>
+        <g class="eyes wide">
+          <circle cx="21" cy="24.6" r="3.1"/>
+          <circle cx="35" cy="24.6" r="3.1"/>
+        </g>
+        <path d="M28 30.2 L28 32.2"/>
+        <g class="mouth rest">
+          <path d="M23.4 33.2 Q25.8 35.2 28 32.2"/>
+          <path d="M28 32.2 Q30.2 35.2 32.6 33.2"/>
+        </g>
+        <g class="mouth smirk">
+          <path d="M22.2 32.6 Q25.4 35.4 28 32.2"/>
+          <path d="M28 32.2 Q33.2 36 38.4 29.6" stroke-width="3"/>
+        </g>
+        <g class="mouth work">
+          <path d="M24.6 33.6 Q28 32.5 31.4 33.6"/>
+        </g>
+        <g class="mouth done">
+          <path d="M21.8 31.8 Q28 38.8 34.2 31.8"/>
+        </g>
+        <g class="mouth oops">
+          <ellipse cx="28" cy="34" rx="2.5" ry="3"/>
+        </g>
+        <g opacity=".5" stroke-width="2">
+          <path d="M7.5 28.5 L14.5 29.4"/>
+          <path d="M7.5 33 L14.5 32"/>
+          <path d="M48.5 28.5 L41.5 29.4"/>
+          <path d="M48.5 33 L41.5 32"/>
+        </g>
+      </svg>
+      <div>
+        <h1>tapedeck</h1>
+        <div class="sub">Paste a link, pick a folder. Splits on chapters automatically.</div>
+      </div>
+    </div>
   </header>
 
   <div class="card">
     <div class="row">
       <div>
         <label for="url">Link</label>
-        <input id="url" type="text" placeholder="https://soundcloud.com/... or https://youtu.be/..." autofocus>
+        <input id="url" type="text" autofocus>
       </div>
       <button id="go">Download</button>
     </div>
@@ -154,24 +240,24 @@
     <div style="margin-top:14px">
       <label for="folder">Destination folder</label>
       <div class="row">
-        <div><input id="folder" type="text" readonly placeholder="Click Browse to choose…"></div>
+        <div><input id="folder" type="text" readonly></div>
         <button id="browse" type="button" class="ghost">Browse…</button>
       </div>
-      <div class="hint">Inside <code id="root">…</code>. Created if it doesn't exist.</div>
+      <div class="hint"><code id="root">…</code></div>
     </div>
 
     <div class="opts" style="margin-top:14px">
       <div style="flex:1 1 200px">
         <label for="artist">Artist</label>
-        <input id="artist" type="text" placeholder="Oasis">
+        <input id="artist" type="text">
       </div>
       <div style="flex:1 1 200px">
         <label for="album">Album</label>
-        <input id="album" type="text" placeholder="MTV Unplugged 1996">
+        <input id="album" type="text">
       </div>
       <div style="flex:0 1 100px">
         <label for="date">Year</label>
-        <input id="date" type="text" placeholder="1996">
+        <input id="date" type="text">
       </div>
     </div>
     <div class="hint">Leave blank to use the upload's own tags — on YouTube that's
@@ -400,6 +486,8 @@ async function start(){
   if (!$('folder').value.trim())  return showErr('Give the destination folder a name.');
 
   $('go').disabled = true;
+  document.body.classList.add('working');
+  mood('busy');
   $('again').style.display = 'none';
   $('panel').classList.add('on');
   $('files').innerHTML=''; $('log').textContent=''; $('out').style.display='none';
@@ -447,6 +535,7 @@ function poll(id){
       if (++misses < 8) return;
       clearInterval(timer);
       $('go').disabled = false;
+      document.body.classList.remove('working');
       $('bar').className = 'bar err';
       $('bar').firstElementChild.style.width = '100%';
       $('phase').textContent = 'Lost contact';
@@ -464,6 +553,8 @@ function poll(id){
     if (s.status === 'running') return;
     clearInterval(timer);
     $('go').disabled = false;
+    document.body.classList.remove('working');
+    mood(s.status === 'error' ? 'startled' : 'pleased', 5000);
 
     $('again').style.display = '';
     if (s.status === 'error'){
@@ -487,6 +578,8 @@ function poll(id){
 
 $('again').addEventListener('click', ()=>{
   clearInterval(timer);
+  document.body.classList.remove('working');
+  mood(null);
   $('panel').classList.remove('on');
   $('again').style.display = 'none';
   $('files').innerHTML=''; $('log').textContent=''; $('out').style.display='none';
@@ -495,6 +588,37 @@ $('again').addEventListener('click', ()=>{
   clearErr();
   $('url').value=''; $('url').focus();   // folder/artist/album kept - usually the same album
   $('go').disabled = false;
+});
+
+
+/* The cat smirks when you interact with a control. Held while a field has
+   focus, and a short beat after a click, so it reads as a reaction rather
+   than a flicker. */
+let smirkOff, moodOff;
+const MOODS = ['smirk','busy','pleased','startled'];
+
+function mood(name, ms){
+  clearTimeout(moodOff);
+  document.body.classList.remove(...MOODS);
+  if (name) document.body.classList.add(name);
+  if (ms) moodOff = setTimeout(()=>document.body.classList.remove(name), ms);
+}
+
+function smirk(hold){
+  // Never override a real status face with a hover reaction.
+  if (MOODS.slice(1).some(m => document.body.classList.contains(m))) return;
+  document.body.classList.add('smirk');
+  clearTimeout(smirkOff);
+  if (!hold) smirkOff = setTimeout(()=>document.body.classList.remove('smirk'), 1300);
+}
+document.addEventListener('focusin', e=>{
+  if (e.target.closest('input,select,button')) smirk(true);
+});
+document.addEventListener('focusout', e=>{
+  if (e.target.closest('input,select')) smirk(false);
+});
+document.addEventListener('click', e=>{
+  if (e.target.closest('button,.item,.check')) smirk(false);
 });
 
 $('go').addEventListener('click', start);

@@ -249,6 +249,19 @@ def write_cue(path, chapters, meta):
 
 
 
+
+def display_root(path):
+    """Root path with the account name replaced.
+
+    The UI shows this under the folder box, so it lands in every screenshot.
+    Masking here rather than in the page keeps the real name off the wire.
+    """
+    parts = str(path).split("\\")
+    if len(parts) > 2 and len(parts[0]) == 2 and parts[0][1] == ":"        and parts[1].lower() == "users":
+        parts[2] = "username"
+    return "\\".join(parts)
+
+
 def child_cmd(target):
     """Command prefix for running one of our tools as a subprocess.
 
@@ -501,7 +514,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/config":
             return self._send(200, json.dumps({
-                "root": CONFIG["root"],
+                "root": display_root(CONFIG["root"]),
                 "needsToken": bool(CONFIG.get("token")),
                 "formats": ["mp3", "m4a", "flac"],
                 # A native dialog opens on the machine running this server, so it
