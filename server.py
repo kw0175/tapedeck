@@ -237,6 +237,11 @@ def run_job(job):
                  "-o", str(work / "%(title)s.%(ext)s"),
                  "--write-info-json", "--write-thumbnail",
                  "--no-playlist" if not job["playlist"] else "--yes-playlist",
+                 # YouTube throttles a single connection hard. Fetching
+                 # fragments in parallel is the difference between a 90-minute
+                 # set taking minutes and taking most of an hour. soundcloud_dl
+                 # already did this; the server never got the flag.
+                 "--concurrent-fragments", "4",
                  "--newline"]
         # YouTube 403s the media URLs unless the JS challenges are solved, which
         # needs a runtime plus the solver script (an opt-in download).
