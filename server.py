@@ -247,6 +247,15 @@ def run_job(job):
         else:
             log(job, "!! deno not found - YouTube downloads will fail with 403.")
             log(job, "   Install it:  winget install DenoLand.Deno")
+
+        # YouTube increasingly answers anonymous requests with "Sign in to
+        # confirm you're not a bot". Borrowing the browser's logged-in session
+        # is the documented fix. Opt-in: reading cookie stores without being
+        # asked would be a surprise. Cookies are passed to yt-dlp on this
+        # machine and go nowhere else.
+        browser = CONFIG.get("cookiesFromBrowser")
+        if browser:
+            ytdlp += ["--cookies-from-browser", browser]
         rc = run(job, ytdlp + [job["url"]], "Downloading")
         if rc != 0:
             raise RuntimeError("Download failed - see log")
@@ -523,7 +532,8 @@ def main():
 
     root = Path(args.root).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
-    CONFIG.update(root=str(root), token=args.token)
+    CONFIG.update(root=str(root), token=args.token,
+                  cookiesFromBrowser=cfg.get("cookiesFromBrowser"))
 
     if not find_exe("ffmpeg"):
         print("!! ffmpeg not found - conversion will fail.\n"
