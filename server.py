@@ -32,6 +32,16 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+# Windows consoles default to cp1252, which cannot encode characters yt-dlp puts
+# in filenames - it substitutes U+29F8 BIG SOLIDUS for "/" so the name is legal.
+# Printing such a name then raises UnicodeEncodeError and kills the run.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):                             # pragma: no cover
+    pass
+
+
 HERE = Path(__file__).resolve().parent
 JOBS = {}
 JOBS_LOCK = threading.Lock()
@@ -182,8 +192,13 @@ def run(job, cmd, phase):
     """Run a subprocess, streaming its output into the job log."""
     with JOBS_LOCK:
         job["phase"] = phase
+    # Force UTF-8 in the child too. Reading the pipe as UTF-8 is not enough - the
+    # child writes with the console's cp1252 codec and dies on filenames yt-dlp
+    # has sanitised with characters like U+29F8.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8:replace", "PYTHONUTF8": "1"}
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, bufsize=1, encoding="utf-8", errors="replace")
+                            text=True, bufsize=1, encoding="utf-8", errors="replace",
+                            env=env)
     for line in proc.stdout:
         log(job, line)
         m = re.search(r"(\d{1,3}(?:\.\d)?)%", line)

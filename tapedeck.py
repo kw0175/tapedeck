@@ -20,6 +20,16 @@ import shutil
 import sys
 from pathlib import Path
 
+# Windows consoles default to cp1252, which cannot encode characters yt-dlp puts
+# in filenames - it substitutes U+29F8 BIG SOLIDUS for "/" so the name is legal.
+# Printing such a name then raises UnicodeEncodeError and kills the run.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):                             # pragma: no cover
+    pass
+
+
 try:
     import yt_dlp
 except ImportError:
