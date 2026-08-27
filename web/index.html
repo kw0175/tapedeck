@@ -30,14 +30,54 @@
   .brand{display:flex;align-items:center;gap:9px}
   .mark{width:74px;height:64px;color:var(--accent2);flex:0 0 auto;
         filter:drop-shadow(0 3px 10px rgba(91,140,255,.35))}
+  /* Breathing lives on the wrapper so it can run while the face itself is
+     being transformed - two animations on one transform would fight. */
+  .markwrap{position:relative;display:flex;align-items:center;flex:0 0 auto;
+            animation:breathe 4.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.022)}}
+
+  /* Z's should look breathed out, not conjured: they start small at the cat's
+     muzzle, appear almost instantly, then grow, sway and thin out as they
+     rise. Each takes a different path so three of them never look like one
+     animation played three times. */
+  .zzz{position:absolute;top:38%;right:6px;width:0;height:0;pointer-events:none}
+  .zzz i{position:absolute;font-style:italic;font-weight:800;font-size:11px;
+         letter-spacing:-.5px;color:var(--accent2);opacity:0;
+         animation:hue 9s linear infinite;
+         text-shadow:0 1px 6px rgba(91,140,255,.45)}
+  body.sleepy .zzz i:nth-child(1){animation:hue 9s linear infinite, zA 3.5s ease-out infinite}
+  body.sleepy .zzz i:nth-child(2){animation:hue 9s linear infinite, zB 3.5s ease-out infinite 1.15s}
+  body.sleepy .zzz i:nth-child(3){animation:hue 9s linear infinite, zC 3.5s ease-out infinite 2.3s}
+
+  @keyframes zA{
+    0%  {opacity:0;  transform:translate(0,0)       scale(.45) rotate(-20deg)}
+    8%  {opacity:.95}
+    35% {              transform:translate(9px,-13px)  scale(.85) rotate(6deg)}
+    68% {opacity:.6;   transform:translate(3px,-25px)  scale(1.15) rotate(-8deg)}
+    100%{opacity:0;    transform:translate(12px,-40px) scale(1.5) rotate(12deg)}
+  }
+  @keyframes zB{
+    0%  {opacity:0;  transform:translate(0,0)       scale(.4)  rotate(14deg)}
+    9%  {opacity:.9}
+    40% {              transform:translate(-4px,-14px) scale(.8)  rotate(-10deg)}
+    72% {opacity:.55;  transform:translate(6px,-26px)  scale(1.1) rotate(8deg)}
+    100%{opacity:0;    transform:translate(-2px,-41px) scale(1.45) rotate(-6deg)}
+  }
+  @keyframes zC{
+    0%  {opacity:0;  transform:translate(0,0)       scale(.5)  rotate(-6deg)}
+    7%  {opacity:.85}
+    38% {              transform:translate(5px,-15px)  scale(.9)  rotate(12deg)}
+    70% {opacity:.5;   transform:translate(12px,-27px) scale(1.2) rotate(-4deg)}
+    100%{opacity:0;    transform:translate(7px,-43px)  scale(1.55) rotate(16deg)}
+  }
   /* Colour cycles always; the bob only while a job runs, so motion still
      means something is happening. */
   .mark{transform-origin:50% 60%; animation:hue 9s linear infinite;
-        transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+        transition:transform .34s cubic-bezier(.34,1.42,.5,1)}
   /* Reacts to you touching a control, so the app feels like it noticed. */
   /* One face at a time. Each expression maps to something the app is doing,
      so the cat is a status indicator rather than decoration. */
-  .mouth,.eyes{transition:opacity .18s ease}
+  .mouth,.eyes{transition:opacity .26s cubic-bezier(.4,0,.2,1)}
   .mouth{opacity:0}
   .mouth.rest{opacity:1}
   .eyes.wide{opacity:0}
@@ -47,17 +87,39 @@
   body.pleased  .mouth{opacity:0} body.pleased  .mouth.done {opacity:1}
   body.startled .mouth{opacity:0} body.startled .mouth.oops {opacity:1}
 
+  body.smile    .mouth{opacity:0} body.smile    .mouth.smile {opacity:1}
+  body.frown    .mouth{opacity:0} body.frown    .mouth.frown {opacity:1}
+  body.cross    .mouth{opacity:0} body.cross    .mouth.cross {opacity:1}
+  body.sleepy   .mouth{opacity:0} body.sleepy   .mouth.sleepy{opacity:1}
+
+  .brows,.eyes.shut,.eyes.wink{opacity:0;transition:opacity .26s cubic-bezier(.4,0,.2,1)}
+
+  body.wink   .mouth{opacity:0} body.wink   .mouth.smirk {opacity:1}
+  body.cheeky .mouth{opacity:0} body.cheeky .mouth.cheeky{opacity:1}
+  body.grin   .mouth{opacity:0} body.grin   .mouth.grin  {opacity:1}
+  body.wink   .eyes.calm{opacity:0}
+  body.wink   .eyes.wink{opacity:1}
+  body.cheeky .eyes.calm{transform:scaleY(.86)}
+  body.wink   .mark{transform:rotate(-6deg) scale(1.06)}
+  body.cheeky .mark{transform:rotate(3deg)  scale(1.05)}
+  body.grin   .mark{transform:scale(1.08)}
+  body.cross  .brows{opacity:1}
+  body.sleepy .eyes.calm{opacity:0}
+  body.sleepy .eyes.shut{opacity:1}
   body.startled .eyes.calm{opacity:0}
   body.startled .eyes.wide{opacity:1}
 
-  .eyes{transition:opacity .18s ease, transform .2s ease; transform-origin:28px 25px}
+  .eyes{transition:opacity .26s cubic-bezier(.4,0,.2,1), transform .3s cubic-bezier(.34,1.42,.5,1); transform-origin:28px 25px}
   body.smirk .eyes.calm{transform:translateY(-.6px) scaleY(.82)}
   body.busy  .eyes.calm{transform:scaleY(.7)}
 
   body.smirk    .mark{transform:rotate(-5deg) scale(1.06)}
   body.pleased  .mark{transform:scale(1.1)}
   body.startled .mark{transform:rotate(4deg)}
-  body.working .mark{animation:hue 9s linear infinite, bob 1.9s ease-in-out infinite}
+  body.smile    .mark{transform:scale(1.05)}
+  body.cross    .mark{transform:rotate(-2deg) scale(1.04)}
+  body.sleepy   .mark{transform:translateY(2px) scale(.97); opacity:.75}
+  body.working .mark{animation:hue 9s linear infinite, bob 2.6s cubic-bezier(.45,.05,.55,.95) infinite}
   @keyframes hue{
     0%  {color:#7aa2ff}
     20% {color:#8f7dff}
@@ -67,8 +129,11 @@
     100%{color:#7aa2ff}
   }
   @keyframes bob{
-    0%,100%{transform:rotate(-3deg) translateY(0)}
-    50%    {transform:rotate(3deg)  translateY(-2px)}
+    0%   {transform:rotate(-3.2deg) translateY(0)}
+    28%  {transform:rotate(1.5deg)  translateY(-2.4px)}
+    52%  {transform:rotate(3.2deg)  translateY(-1px)}
+    78%  {transform:rotate(-1deg)   translateY(-2.6px)}
+    100% {transform:rotate(-3.2deg) translateY(0)}
   }
 
   .card{
@@ -116,6 +181,23 @@
   .hint{font-size:12px;color:var(--dim);margin-top:7px}
   code{background:#0d1730;padding:1px 6px;border-radius:5px;
        font-family:Consolas,monospace;font-size:12px;color:#b9c9ee}
+
+  .barwrap{position:relative;padding-top:26px}
+  .flyer{position:absolute;bottom:9px;left:0;width:44px;height:27px;
+         transform:translateX(-50%);color:var(--accent2);opacity:0;
+         pointer-events:none;
+         transition:left .4s cubic-bezier(.2,.8,.2,1), opacity .3s ease}
+  .flyer svg{width:100%;height:100%;display:block}
+  body.working .flyer{opacity:1;animation:fly 2.1s ease-in-out infinite}
+  body.working .prop{animation:propspin .18s linear infinite;
+                     transform-origin:40px 15px}
+  @keyframes fly{
+    0%   {transform:translateX(-50%) translateY(0)     rotate(-3deg)}
+    30%  {transform:translateX(-50%) translateY(-4px)  rotate(2deg)}
+    62%  {transform:translateX(-50%) translateY(-1px)  rotate(-1deg)}
+    100% {transform:translateX(-50%) translateY(0)     rotate(-3deg)}
+  }
+  @keyframes propspin{to{transform:rotate(360deg)}}
 
   #panel{display:none}
   #panel.on{display:block}
@@ -183,6 +265,7 @@
 
   <header>
     <div class="brand">
+      <span class="markwrap">
       <svg class="mark" viewBox="0 0 56 48" aria-hidden="true"
            fill="none" stroke="currentColor" stroke-width="2.6"
            stroke-linecap="round" stroke-linejoin="round">
@@ -214,6 +297,39 @@
         <g class="mouth oops">
           <ellipse cx="28" cy="34" rx="2.5" ry="3"/>
         </g>
+        <g class="mouth smile">
+          <path d="M21.8 31.4 Q28 37.4 34.2 31.4"/>
+        </g>
+        <g class="mouth frown">
+          <path d="M22.4 35.2 Q28 30.6 33.6 35.2"/>
+        </g>
+        <g class="mouth cross">
+          <path d="M23 35.4 Q28 31.2 33 35.4"/>
+        </g>
+        <g class="mouth sleepy">
+          <path d="M25.2 33.4 Q28 34.9 30.8 33.4"/>
+        </g>
+        <g class="brows">
+          <path d="M16.4 20.2 L24.6 23.4"/>
+          <path d="M39.6 20.2 L31.4 23.4"/>
+        </g>
+        <g class="eyes shut">
+          <path d="M17.6 25.4 L24.4 25.4"/>
+          <path d="M31.6 25.4 L38.4 25.4"/>
+        </g>
+        <g class="eyes wink">
+          <path d="M17.5 26 Q21 22.2 24.5 26"/>
+          <path d="M31.6 25.6 L38.4 25.6"/>
+        </g>
+        <g class="mouth cheeky">
+          <path d="M24.4 32.2 Q28 35.4 31.6 32.2"/>
+          <ellipse cx="28.6" cy="35.2" rx="2" ry="2.4"
+                   fill="currentColor" stroke="none" opacity=".55"/>
+        </g>
+        <g class="mouth grin">
+          <path d="M21.4 31.2 Q28 38.6 34.6 31.2"/>
+          <path d="M24.4 33.4 L31.6 33.4" opacity=".55"/>
+        </g>
         <g opacity=".5" stroke-width="2">
           <path d="M7.5 28.5 L14.5 29.4"/>
           <path d="M7.5 33 L14.5 32"/>
@@ -221,6 +337,8 @@
           <path d="M48.5 33 L41.5 32"/>
         </g>
       </svg>
+        <span class="zzz" aria-hidden="true"><i>Z</i><i>Z</i><i>Z</i></span>
+      </span>
       <div>
         <h1>tapedeck</h1>
         <div class="sub">Paste a link, pick a folder. Splits on chapters automatically.</div>
@@ -313,7 +431,22 @@
         <span id="pct">0%</span>
       </span>
     </div>
-    <div class="bar" id="bar"><i></i></div>
+    <div class="barwrap">
+      <span class="flyer" id="flyer" aria-hidden="true">
+        <svg viewBox="0 0 46 28" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 18 Q16 11 30 12 L38 14 Q41 15 38 16.5 L30 18.5 Q16 22 6 18 Z"/>
+          <path d="M16 12.5 L21 5 L26 12"/>
+          <path d="M9 17.5 L5.5 23 L13 19.5"/>
+          <circle cx="27" cy="14" r="4"/>
+          <path d="M24.2 11.4 L23.4 8.4 L26.1 10.2"/>
+          <path d="M29.8 11.4 L30.6 8.4 L27.9 10.2"/>
+          <path d="M25.4 15.2 Q27 16.6 28.6 15.2"/>
+          <g class="prop"><path d="M40 10.5 L40 19.5"/></g>
+        </svg>
+      </span>
+      <div class="bar" id="bar"><i></i></div>
+    </div>
     <div id="out" class="msg ok" style="display:none"></div>
     <div id="files" class="files"></div>
     <pre id="log"></pre>
@@ -451,7 +584,9 @@ $('native').addEventListener('click', async ()=>{
   finally{ $('native').disabled = false; }
 });
 
-function showErr(m){ const e=$('formErr'); e.textContent=m; e.style.display='block'; }
+function showErr(m){ const e=$('formErr'); e.textContent=m; e.style.display='block';
+  if (typeof mood === 'function' && !STATUS.some(x=>document.body.classList.contains(x)))
+    mood('frown', 2200); }
 function clearErr(){ $('formErr').style.display='none'; }
 
 // When the PC is down or restarting, the tunnel returns an HTML error page and
@@ -492,6 +627,7 @@ async function start(){
   $('panel').classList.add('on');
   $('files').innerHTML=''; $('log').textContent=''; $('out').style.display='none';
   $('bar').className='bar'; $('bar').firstElementChild.style.width='0';
+  $('flyer').style.left = '0%';
 
   let r, j;
   try{
@@ -547,6 +683,7 @@ function poll(id){
     $('phase').textContent = s.phase;
     $('pct').textContent = Math.round(s.percent) + '%';
     $('bar').firstElementChild.style.width = Math.max(3, s.percent) + '%';
+    $('flyer').style.left = Math.max(3, s.percent) + '%';
     $('log').textContent = (s.log||[]).join('\n');
     $('log').scrollTop = $('log').scrollHeight;
 
@@ -554,7 +691,7 @@ function poll(id){
     clearInterval(timer);
     $('go').disabled = false;
     document.body.classList.remove('working');
-    mood(s.status === 'error' ? 'startled' : 'pleased', 5000);
+    mood(s.status === 'error' ? 'cross' : 'pleased', 5000);
 
     $('again').style.display = '';
     if (s.status === 'error'){
@@ -594,8 +731,11 @@ $('again').addEventListener('click', ()=>{
 /* The cat smirks when you interact with a control. Held while a field has
    focus, and a short beat after a click, so it reads as a reaction rather
    than a flicker. */
-let smirkOff, moodOff;
-const MOODS = ['smirk','busy','pleased','startled'];
+let moodOff;
+const MOODS = ['smirk','busy','pleased','startled','smile','frown','cross','sleepy',
+               'wink','cheeky','grin'];
+// Faces that outrank a passing reaction - a status must not be overwritten.
+const STATUS = ['busy','pleased','startled','cross'];
 
 function mood(name, ms){
   clearTimeout(moodOff);
@@ -604,22 +744,56 @@ function mood(name, ms){
   if (ms) moodOff = setTimeout(()=>document.body.classList.remove(name), ms);
 }
 
-function smirk(hold){
-  // Never override a real status face with a hover reaction.
-  if (MOODS.slice(1).some(m => document.body.classList.contains(m))) return;
-  document.body.classList.add('smirk');
-  clearTimeout(smirkOff);
-  if (!hold) smirkOff = setTimeout(()=>document.body.classList.remove('smirk'), 1300);
+/* One owner for the face. Two systems used to fight: a direct class toggle and
+   mood(). focusout re-added the smirk and the next focusin cleared its removal
+   timer, so moving between fields left it stuck on permanently. */
+/* Reaction pool. Never repeat the last face, or a small set feels stuck. */
+const PLAYFUL = ['smirk','smile','wink','cheeky','grin'];
+let lastFace = '';
+function randomFace(){
+  const pick = PLAYFUL.filter(f => f !== lastFace);
+  lastFace = pick[Math.floor(Math.random() * pick.length)];
+  return lastFace;
 }
+
+function inField(el){ return !!(el && el.closest && el.closest('input,select')); }
+
+let heldFace = 'smirk';
 document.addEventListener('focusin', e=>{
-  if (e.target.closest('input,select,button')) smirk(true);
+  if (busyNow()) return;
+  // Fields get a random face too, held while focused - always smirking here
+  // made most of the set unreachable unless you pressed a button.
+  if (inField(e.target)) mood(heldFace = randomFace());
 });
 document.addEventListener('focusout', e=>{
-  if (e.target.closest('input,select')) smirk(false);
+  if (busyNow()) return;
+  if (inField(e.target)) mood(null);
 });
 document.addEventListener('click', e=>{
-  if (e.target.closest('button,.item,.check')) smirk(false);
+  if (busyNow()) return;
+  if (e.target.closest('button,.item,.check')) mood(randomFace(), 1400);
 });
+
+
+/* Reachable expressions: hovering Download, a validation slip, and dozing off
+   after a while idle. Without these the cat only ever changes mid-download. */
+function busyNow(){ return STATUS.some(m => document.body.classList.contains(m)); }
+
+$('go').addEventListener('mouseenter', ()=>{ if (!busyNow()) mood('smile'); });
+$('go').addEventListener('mouseleave', ()=>{
+  if (busyNow()) return;
+  mood(inField(document.activeElement) ? heldFace : null);
+});
+
+let dozeTimer;
+function stayAwake(){
+  if (document.body.classList.contains('sleepy')) mood(null);
+  clearTimeout(dozeTimer);
+  dozeTimer = setTimeout(()=>{ if (!busyNow()) mood('sleepy'); }, 45000);
+}
+['pointermove','keydown','click','focusin'].forEach(
+  e => document.addEventListener(e, stayAwake, {passive:true}));
+stayAwake();
 
 $('go').addEventListener('click', start);
 $('url').addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
