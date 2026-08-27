@@ -208,6 +208,39 @@ def discogs_covers(artist, album):
     return out
 
 
+
+# Words that say nothing about *which* release this is.
+_NOISE = {"live", "the", "and", "of", "at", "in", "on", "a", "an", "from",
+          "full", "concert", "show", "gig", "tour", "set", "vol", "part",
+          "remastered", "official", "video", "audio", "hd", "cd", "dvd"}
+
+
+def _tokens(text):
+    words = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return {w for w in words if len(w) > 2 and w not in _NOISE}
+
+
+def album_matches(wanted, candidate):
+    """Does this result plausibly refer to the same release?
+
+    The artist check alone is not enough. Searching a bootleg returns whatever
+    else that artist has on Discogs, and picking by image size then lands a
+    completely different show's sleeve - which is worse than no cover, because
+    it looks deliberate.
+
+    Requires a shared distinctive word. A year on its own does not count: half
+    an artist's bootlegs share a year, so "2000" matching proves nothing.
+    """
+    want, got = _tokens(wanted), _tokens(candidate)
+    shared = want & got
+    if not shared:
+        return 0.0
+    meaningful = {w for w in shared if not re.fullmatch(r"(19|20)\d\d", w)}
+    if not meaningful:
+        return 0.0
+    return len(shared) / max(1, len(want))
+
+
 def itunes_covers(artist, album):
     """Apple's public search API. No key, big catalogue, high-res art.
 
@@ -291,19 +324,24 @@ def search_cover(artist, album, dest, ffprobe, log=print):
             side = min(dim) if dim else 0
             if not side:
                 continue
+            rel = album_matches(album, label)
+            if rel <= 0:
+                log(f"  {name}: {label} - skipped, different release")
+                continue
             log(f"  {name}: {label} - {dim[0]}x{dim[1]}")
-            if best is None or side > best[0]:
-                best = (side, dest.read_bytes(), label, name)
-            if side >= 1000:
+            score = (rel, side)
+            if best is None or score > (best[0], best[1]):
+                best = (rel, side, dest.read_bytes(), label, name)
+            if rel >= 1.0 and side >= 1000:
                 break
-        if best and best[0] >= 1000:
-            break                                  # good enough; stop querying
+        if best and best[0] >= 1.0 and best[1] >= 1000:
+            break                                  # exact-ish and large; stop
 
     if not best:
         log("  nothing found in any catalogue")
         return None
-    dest.write_bytes(best[1])
-    log(f"  using {best[3]}: {best[2]} ({best[0]}px)")
+    dest.write_bytes(best[2])
+    log(f"  using {best[4]}: {best[3]} ({best[1]}px)")
     return dest
 
 def dimensions(path, ffprobe):
@@ -457,6 +495,9 @@ def main():
     p.add_argument("--size", type=int, default=1000,
                    help="output cover size in pixels, square (default: 1000 - "
                         "Apple Music and Spotify both want >=1000)")
+    p.add_argument("--min-size", type=int, default=0, metavar="PX",
+                   help="refuse to embed art smaller than this. Stops a refresh "
+                        "trading a good cover for a worse one.")
     p.add_argument("--no-trim", action="store_true",
                    help="keep letterbox bars instead of cropping them off")
     p.add_argument("--no-cover-file", action="store_true",
@@ -506,6 +547,12 @@ def main():
         if dim and dim[0] != dim[1]:
             print(f"             not square - centre-cropping to "
                   f"{min(dim)}x{min(dim)} before scaling")
+
+        if args.min_size:
+            found = dimensions(raw, ffprobe)
+            if found and min(found) < args.min_size:
+                sys.exit(f"Found only {found[0]}x{found[1]}, which is smaller than "
+                         f"the existing {args.min_size}px cover - leaving it alone.")
 
         art, trimmed = make_square(raw, Path(td) / "cover.jpg", args.size, ffmpeg,
                                    trim=not args.no_trim)
