@@ -114,6 +114,10 @@ def main():
                    help="the Worker's ADMIN_TOKEN secret")
     p.add_argument("--port", type=int, default=int(cfg.get("port", 8800)),
                    help="local server port")
+    p.add_argument("--wait", type=int, default=int(cfg.get("wait", 0)), metavar="SEC",
+                   help="wait up to this long for the local server before giving up. "
+                        "Auto-start needs this: nothing guarantees the server task "
+                        "wins the race at boot (default: 0, fail immediately)")
     args = p.parse_args()
 
     missing = [n for n, v in (("--worker", args.worker),
@@ -127,8 +131,16 @@ def main():
         sys.exit("cloudflared not found.\n  winget install Cloudflare.cloudflared")
 
     if not local_up(args.port):
-        sys.exit(f"Nothing answering on http://127.0.0.1:{args.port}\n"
-                 f"  Start it first:  python server.py --token <TOKEN>")
+        if args.wait <= 0:
+            sys.exit(f"Nothing answering on http://127.0.0.1:{args.port}\n"
+                     f"  Start it first:  python server.py")
+        print(f"  Waiting up to {args.wait}s for the server on port {args.port} ...")
+        deadline = time.time() + args.wait
+        while not local_up(args.port):
+            if time.time() >= deadline:
+                sys.exit(f"Server never came up on port {args.port} after "
+                         f"{args.wait}s - giving up.")
+            time.sleep(2)
 
     print(f"  Local  : http://127.0.0.1:{args.port}")
     print(f"  Worker : {args.worker}")
