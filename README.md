@@ -44,6 +44,28 @@ the site it came from, whatever the copyright position where you live. That is
 your call and your responsibility. This project does not condone redistributing
 licensed material, and is not affiliated with any of the platforms it can read.
 
+## Download
+
+**[Latest release](https://github.com/kw0175/tapedeck/releases/latest)** - grab
+`tapedeck.exe`, double-click, done. One file, no installer.
+
+Windows will show a SmartScreen warning the first time because the build is not
+code-signed: **More info -> Run anyway**. Signing certificates cost money and
+this is a free tool.
+
+Two things are not bundled and must be installed once:
+
+```powershell
+winget install Gyan.FFmpeg      # converting and splitting audio
+winget install DenoLand.Deno    # YouTube; without it downloads fail with 403
+```
+
+They stay external deliberately - together they are ~200 MB, and ffmpeg's
+licensing would complicate this project's MIT terms. The app tells you if either
+is missing rather than failing cryptically.
+
+Prefer running from source? See Setup below; everything works the same way.
+
 ## Web UI
 
 Paste a link, name a destination folder, press Download. The job runs in the

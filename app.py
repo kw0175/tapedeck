@@ -9,11 +9,41 @@ random free port, so there is no fixed address to reach and no token to type.
     python app.py
 """
 
+import os
 import socket
 import sys
 import threading
 import webbrowser
 from pathlib import Path
+
+# A windowed process - pythonw, or a PyInstaller build with no console - has
+# sys.stdout set to None. The first print() then raises and the process dies
+# with no message at all, which looks exactly like "nothing happened".
+# Redirect to a log before importing anything that might print.
+if sys.stdout is None or sys.stderr is None:
+    _log_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "tapedeck"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _log = open(_log_dir / "app.log", "a", encoding="utf-8", errors="replace",
+                buffering=1)
+    sys.stdout = sys.stdout or _log
+    sys.stderr = sys.stderr or _log
+
+# When frozen, the exe re-runs itself to stand in for `python <script>`:
+# sys.executable is tapedeck.exe, not a Python interpreter, so the usual
+# subprocess calls would fail. server.py builds commands via child_cmd().
+if getattr(sys, "frozen", False) and len(sys.argv) > 2 and sys.argv[1] == "--child":
+    _target, _rest = sys.argv[2], sys.argv[3:]
+    sys.argv = [_target] + _rest
+    if _target == "yt_dlp":
+        from yt_dlp import main as _m
+        sys.exit(_m())
+    if _target == "split_tracks":
+        import split_tracks
+        sys.exit(split_tracks.main())
+    if _target == "add_art":
+        import add_art
+        sys.exit(add_art.main())
+    sys.exit(f"unknown child target: {_target}")
 
 import server
 

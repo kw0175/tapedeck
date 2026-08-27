@@ -151,7 +151,23 @@ def artist_matches(wanted, candidate):
 
 
 
-CONFIG_FILE = Path(__file__).resolve().parent / "config.local.json"
+def _config_path():
+    """Where secrets live.
+
+    Prefers LOCALAPPDATA/tapedeck/config.json. The repo folder is often inside
+    OneDrive or Dropbox, and while git ignores config.local.json a sync client
+    does not, so tokens end up in cloud storage. Falls back to the repo copy so
+    existing setups keep working.
+    """
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_CONFIG_HOME")
+    if base:
+        p = Path(base) / "tapedeck" / "config.json"
+        if p.exists():
+            return p
+    return Path(__file__).resolve().parent / "config.local.json"
+
+
+CONFIG_FILE = _config_path()
 
 
 def load_config():

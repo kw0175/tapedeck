@@ -42,7 +42,9 @@ except (AttributeError, ValueError):                             # pragma: no co
     pass
 
 
-HERE = Path(__file__).resolve().parent
+# PyInstaller unpacks bundled data (web/index.html) to _MEIPASS, not next to
+# the exe, so HERE has to follow it.
+HERE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 JOBS = {}
 JOBS_LOCK = threading.Lock()
 CONFIG = {}
@@ -54,7 +56,23 @@ print = functools.partial(print, flush=True)                     # noqa: A001
 
 # ---------------------------------------------------------------- helpers
 
-CONFIG_FILE = HERE / "config.local.json"
+def _config_path():
+    """Where secrets live.
+
+    Prefers LOCALAPPDATA/tapedeck/config.json. The repo folder is often inside
+    OneDrive or Dropbox, and while git ignores config.local.json a sync client
+    does not, so tokens end up in cloud storage. Falls back to the repo copy so
+    existing setups keep working.
+    """
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_CONFIG_HOME")
+    if base:
+        p = Path(base) / "tapedeck" / "config.json"
+        if p.exists():
+            return p
+    return Path(__file__).resolve().parent / "config.local.json"
+
+
+CONFIG_FILE = _config_path()
 
 
 def load_config():
@@ -229,6 +247,21 @@ def write_cue(path, chapters, meta):
 # ---------------------------------------------------------------- the job
 
 
+
+def child_cmd(target):
+    """Command prefix for running one of our tools as a subprocess.
+
+    Frozen, sys.executable is tapedeck.exe rather than a Python interpreter, so
+    `sys.executable -m yt_dlp` cannot work. The exe re-runs itself with --child
+    and app.py dispatches to the right entry point.
+    """
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--child", target]
+    if target == "yt_dlp":
+        return [sys.executable, "-m", "yt_dlp"]
+    return [sys.executable, str(HERE / f"{target}.py")]
+
+
 def guess_artist_album(job, info):
     """Work out what to search the Cover Art Archive for.
 
@@ -274,7 +307,7 @@ def run_job(job):
         out.mkdir()
 
         # 1. download best audio, plus the metadata and thumbnail in one pass
-        ytdlp = [sys.executable, "-m", "yt_dlp",
+        ytdlp = child_cmd("yt_dlp") + [
                  "-f", "bestaudio/best",
                  "-o", str(work / "%(title)s.%(ext)s"),
                  "--write-info-json", "--write-thumbnail",
@@ -332,7 +365,7 @@ def run_job(job):
             log(job, f"{len(chapters)} chapters found - splitting")
             cue = work / "cue.txt"
             write_cue(cue, chapters, {"ALBUM": album, "ARTIST": artist, "DATE": date})
-            rc = run(job, [sys.executable, str(HERE / "split_tracks.py"), str(audio),
+            rc = run(job, child_cmd("split_tracks") + [str(audio),
                            "--cue", str(cue), "--format", job["format"],
                            "-q", str(job["bitrate"]), "-o", str(out)], "Splitting")
             if rc != 0:
@@ -365,7 +398,7 @@ def run_job(job):
         # Prefer a real release sleeve over the video thumbnail. A thumbnail is a
         # 16:9 frame: squaring it discards a third of the picture and what's left
         # is small. Only fall back to it when nothing is archived for the album.
-        art_cmd = [sys.executable, str(HERE / "add_art.py"), "-d", str(out)]
+        art_cmd = child_cmd("add_art") + ["-d", str(out)]
         s_artist, s_album = guess_artist_album(job, info)
         if s_album:
             art_cmd += ["--search-album", s_album]

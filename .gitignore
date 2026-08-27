@@ -40,3 +40,8 @@ config.local.json
 
 # Real worker config holds your own KV namespace id; ship the example instead
 worker/wrangler.toml
+
+# PyInstaller build output - the exe ships via GitHub Releases, not in git
+build/
+dist/
+*.spec
