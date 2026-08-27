@@ -48,7 +48,7 @@ wrangler deploy
 Then, at home, two windows:
 
 ```powershell
-python server.py --root "C:\Users\Julie Festerling\Music" --token <SERVER_TOKEN>
+python server.py --root "C:\Users\<you>\Music" --token <SERVER_TOKEN>
 python tunnel.py --worker https://<name>.workers.dev --admin-token <ADMIN_TOKEN>
 ```
 

@@ -1,0 +1,5 @@
+# One track title per line, in playing order.
+# Used with:  split_tracks.py --names tracklist.txt
+Opening Track
+Second Track
+Third Track

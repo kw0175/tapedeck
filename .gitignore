@@ -32,3 +32,8 @@ node_modules/
 
 # local secrets - never commit
 config.local.json
+
+# Personal cuesheets / tracklists for specific recordings - keep them local
+*-cue.txt
+*-tracklist.txt
+!examples/*.example.txt

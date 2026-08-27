@@ -8,7 +8,7 @@ backend URL baked in. This starts the tunnel, reads the hostname it was handed,
 and POSTs it to the Worker's /_register endpoint. After that the public
 workers.dev page proxies straight through to your machine.
 
-    python tunnel.py --worker https://soundcloud-dl.kurtiswicker07.workers.dev \
+    python tunnel.py --worker https://<your-worker>.workers.dev \
                      --admin-token <ADMIN_TOKEN>
 
 Run server.py first, in another window. Leave this running - closing it takes

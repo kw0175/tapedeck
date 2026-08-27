@@ -17,6 +17,7 @@ the page can download arbitrary URLs onto your machine.
 """
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -35,6 +36,10 @@ HERE = Path(__file__).resolve().parent
 JOBS = {}
 JOBS_LOCK = threading.Lock()
 CONFIG = {}
+
+# Python block-buffers stdout when it is redirected to a file, which is how the
+# logon launcher runs this - without flushing, the log stays empty.
+print = functools.partial(print, flush=True)                     # noqa: A001
 
 
 # ---------------------------------------------------------------- helpers
@@ -65,6 +70,29 @@ def find_exe(name):
         if hits:
             return str(hits[-1])
     return None
+
+
+def find_deno():
+    """Locate deno, which YouTube extraction now needs.
+
+    YouTube requires executing JavaScript to solve the signature and n
+    challenges. Without a runtime yt-dlp still lists formats, but the media URLs
+    it hands back are rejected with HTTP 403 - the failure looks like a download
+    problem rather than a missing dependency. winget puts deno on PATH, but a
+    shell started before the install won't see it.
+    """
+    exe = shutil.which("deno")
+    if exe:
+        return exe
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        for pat in ("Microsoft/WinGet/Packages/DenoLand.Deno*/**/deno.exe",
+                    "../../.deno/bin/deno.exe"):
+            hits = sorted(Path(local).glob(pat))
+            if hits:
+                return str(hits[-1])
+    home = Path.home() / ".deno" / "bin" / "deno.exe"
+    return str(home) if home.exists() else None
 
 
 def safe_target(folder):
@@ -204,12 +232,22 @@ def run_job(job):
         out.mkdir()
 
         # 1. download best audio, plus the metadata and thumbnail in one pass
-        rc = run(job, [sys.executable, "-m", "yt_dlp",
-                       "-f", "bestaudio/best",
-                       "-o", str(work / "%(title)s.%(ext)s"),
-                       "--write-info-json", "--write-thumbnail",
-                       "--no-playlist" if not job["playlist"] else "--yes-playlist",
-                       "--newline", job["url"]], "Downloading")
+        ytdlp = [sys.executable, "-m", "yt_dlp",
+                 "-f", "bestaudio/best",
+                 "-o", str(work / "%(title)s.%(ext)s"),
+                 "--write-info-json", "--write-thumbnail",
+                 "--no-playlist" if not job["playlist"] else "--yes-playlist",
+                 "--newline"]
+        # YouTube 403s the media URLs unless the JS challenges are solved, which
+        # needs a runtime plus the solver script (an opt-in download).
+        deno = find_deno()
+        if deno:
+            ytdlp += ["--js-runtimes", f"deno:{deno}",
+                      "--remote-components", "ejs:github"]
+        else:
+            log(job, "!! deno not found - YouTube downloads will fail with 403.")
+            log(job, "   Install it:  winget install DenoLand.Deno")
+        rc = run(job, ytdlp + [job["url"]], "Downloading")
         if rc != 0:
             raise RuntimeError("Download failed - see log")
 
@@ -490,9 +528,15 @@ def main():
     if not find_exe("ffmpeg"):
         print("!! ffmpeg not found - conversion will fail.\n"
               "   winget install Gyan.FFmpeg\n")
-    if args.host != "127.0.0.1" and not args.token:
-        print("!! Bound to a public interface with no --token.\n"
-              "   Anyone who can reach this page can download onto your machine.\n")
+    if args.host not in ("127.0.0.1", "::1") and not args.token:
+        # A warning is not enough. This endpoint downloads arbitrary URLs onto
+        # the host and writes files under --root; unauthenticated on a reachable
+        # interface is not a state anyone should arrive at by accident.
+        sys.exit(f"\n!! Refusing to bind {args.host} with no --token.\n"
+                 f"   Anyone who could reach this page would be able to download\n"
+                 f"   arbitrary URLs onto this machine and write files under --root.\n\n"
+                 f"   Give it one:  python server.py --host {args.host} --token <SECRET>\n"
+                 f"   Or leave it on 127.0.0.1 and put a tunnel in front (see README).\n")
 
     # Bind before printing anything reassuring. A silent bind failure is genuinely
     # dangerous here: an older instance keeps serving on the port, and if that one
