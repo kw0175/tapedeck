@@ -164,7 +164,8 @@ the command line and out of shell history. It is gitignored. Flags override it.
   "worker": "https://<your-worker>.workers.dev",
   "adminToken": "<the Worker's ADMIN_TOKEN secret>",
   "wait": 300,
-  "cookiesFromBrowser": "firefox"
+  "cookiesFromBrowser": "firefox",
+  "discogsToken": "<optional, see below>"
 }
 ```
 
@@ -177,6 +178,40 @@ the command line and out of shell history. It is gitignored. Flags override it.
 | `adminToken` | tunnel | Lets a machine register itself |
 | `wait` | tunnel | Seconds to wait for the server at logon |
 | `cookiesFromBrowser` | server | Browser to borrow a logged-in session from |
+| `discogsToken` | artwork | Free token; unlocks bootleg/live sleeve search |
+
+### Artwork sources
+
+Downloads look for a real release sleeve before falling back to the video
+thumbnail. A thumbnail is a 16:9 frame - squaring it throws away a third of the
+picture - so a genuine cover is always better when one exists.
+
+Four catalogues are tried, best result by actual pixel size wins:
+
+| Source | Needs a key | Good for |
+|---|---|---|
+| Discogs | free token | **bootlegs and unofficial live pressings** |
+| iTunes | no | commercial releases, up to 1200px |
+| Deezer | no | commercial releases, 1000px |
+| Cover Art Archive | no | anything archived on MusicBrainz |
+
+Results whose artist does not match are discarded - searching a bootleg's title
+otherwise returns unrelated albums, and a confidently wrong cover is worse than
+no cover.
+
+**Discogs is the one that matters for live recordings.** Most shows were never
+sold, so the commercial catalogues have nothing; Discogs lists unofficial
+pressings. Get a token free at
+<https://www.discogs.com/settings/developers> ("Generate new token") and put it
+in `config.local.json` as `discogsToken`. Without it Discogs is skipped and the
+message says so.
+
+If nothing is found anywhere, the thumbnail is used - for a show that was never
+pressed, that is the honest answer.
+
+Output is square and capped at whatever the source actually provides. Apple
+Music and Spotify both want >=1000px, but a smaller cover is left at its real
+size rather than upscaled to claim a number it cannot back.
 
 ### cookiesFromBrowser
 

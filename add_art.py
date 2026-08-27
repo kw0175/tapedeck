@@ -87,6 +87,7 @@ def _get_json(url, timeout=25, attempts=4):
     """
     req = urllib.request.Request(url, headers={"User-Agent": MB_UA,
                                                "Accept": "application/json"})
+    # Discogs and MusicBrainz both reject urllib's default agent outright.
     delay = 1.5
     for i in range(attempts):
         try:
@@ -147,6 +148,47 @@ def artist_matches(wanted, candidate):
         return True
     w, c = _norm(wanted), _norm(candidate)
     return bool(w) and bool(c) and (w in c or c in w)
+
+
+
+CONFIG_FILE = Path(__file__).resolve().parent / "config.local.json"
+
+
+def load_config():
+    if not CONFIG_FILE.exists():
+        return {}
+    try:
+        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def discogs_covers(artist, album):
+    """Discogs. The one catalogue that genuinely lists bootlegs and unofficial
+    live pressings, with real sleeve scans - which is why it is worth the token.
+
+    Needs a free personal access token in config.local.json as discogsToken.
+    Without one Discogs answers 401, so skip rather than pretend to search.
+    """
+    token = load_config().get("discogsToken")
+    if not token:
+        raise LookupError("no discogsToken in config.local.json - "
+                          "get one free at discogs.com/settings/developers")
+    q = urllib.parse.quote(f"{artist} {album}".strip())
+    data = _get_json(f"https://api.discogs.com/database/search?q={q}"
+                     f"&type=release&per_page=8&token={token}", attempts=2)
+    out = []
+    for r in data.get("results", []):
+        url = r.get("cover_image") or r.get("thumb")
+        title = r.get("title", "?")            # Discogs formats this as "Artist - Title"
+        if not url or "spacer.gif" in url:
+            continue
+        want = _norm(artist)
+        if want and want not in _norm(title):
+            continue
+        fmt = ", ".join(r.get("format", [])[:2])
+        out.append((url, f"{title}{f' [{fmt}]' if fmt else ''}"))
+    return out
 
 
 def itunes_covers(artist, album):
@@ -211,7 +253,8 @@ def search_cover(artist, album, dest, ffprobe, log=print):
     log(f"Searching for artwork: {artist or '(any artist)'} - {album}")
 
     best = None                                   # (side, bytes, label, source)
-    for name, fn in (("iTunes", itunes_covers),
+    for name, fn in (("Discogs", discogs_covers),
+                     ("iTunes", itunes_covers),
                      ("Deezer", deezer_covers),
                      ("CoverArtArchive", coverartarchive_covers)):
         try:

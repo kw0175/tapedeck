@@ -220,7 +220,13 @@
   </div>
 
   <div class="card" id="panel">
-    <div class="phase"><b id="phase">Starting</b><span id="pct">0%</span></div>
+    <div class="phase">
+      <b id="phase">Starting</b>
+      <span>
+        <button id="again" type="button" class="ghost" style="display:none;margin-right:10px">New download</button>
+        <span id="pct">0%</span>
+      </span>
+    </div>
     <div class="bar" id="bar"><i></i></div>
     <div id="out" class="msg ok" style="display:none"></div>
     <div id="files" class="files"></div>
@@ -394,6 +400,7 @@ async function start(){
   if (!$('folder').value.trim())  return showErr('Give the destination folder a name.');
 
   $('go').disabled = true;
+  $('again').style.display = 'none';
   $('panel').classList.add('on');
   $('files').innerHTML=''; $('log').textContent=''; $('out').style.display='none';
   $('bar').className='bar'; $('bar').firstElementChild.style.width='0';
@@ -458,6 +465,7 @@ function poll(id){
     clearInterval(timer);
     $('go').disabled = false;
 
+    $('again').style.display = '';
     if (s.status === 'error'){
       $('bar').className = 'bar err';
       $('bar').firstElementChild.style.width = '100%';
@@ -476,6 +484,18 @@ function poll(id){
     });
   }, 700);
 }
+
+$('again').addEventListener('click', ()=>{
+  clearInterval(timer);
+  $('panel').classList.remove('on');
+  $('again').style.display = 'none';
+  $('files').innerHTML=''; $('log').textContent=''; $('out').style.display='none';
+  $('phase').textContent='Starting'; $('pct').textContent='0%';
+  $('bar').className='bar'; $('bar').firstElementChild.style.width='0';
+  clearErr();
+  $('url').value=''; $('url').focus();   // folder/artist/album kept - usually the same album
+  $('go').disabled = false;
+});
 
 $('go').addEventListener('click', start);
 $('url').addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
