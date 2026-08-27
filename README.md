@@ -126,6 +126,42 @@ winget install Gyan.FFmpeg
 Close and reopen your terminal afterward so `ffmpeg` lands on `PATH`. Verify with
 `ffmpeg -version`.
 
+**3. Deno** — required for YouTube.
+
+```powershell
+winget install DenoLand.Deno
+```
+
+YouTube now requires executing JavaScript to solve the signature and "n"
+challenges on its media URLs. Without a runtime, yt-dlp still lists formats
+perfectly happily and then every download dies with **HTTP 403 Forbidden** — the
+failure looks like a network or auth problem rather than a missing dependency.
+
+tapedeck finds Deno automatically and passes `--js-runtimes` plus
+`--remote-components ejs:github` (the solver script, which is an opt-in
+download). If Deno is missing it says so in the job log instead of leaving you
+guessing.
+
+Other sites don't need it. This is a YouTube-specific requirement.
+
+**Keep yt-dlp current.** Site extraction breaks regularly, and YouTube most of
+all:
+
+```powershell
+pip install -U yt-dlp
+```
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `HTTP 403 Forbidden` on YouTube | Deno missing, or yt-dlp out of date |
+| Page loads but every action 404s | The Worker was redeployed over — see the Worker section |
+| Page returns 503 | `server.py` or `tunnel.py` isn't running |
+| Page returns 530 | Tunnel is registered but your PC is unreachable |
+| `file is locked` when embedding art | The player has the file open; pause it |
+| Destination folder empties itself | Expected if it's a watched folder — the player imported them |
+
 ## Usage
 
 ```powershell
